@@ -5,7 +5,10 @@ require('dotenv').config();
 const express = require('express');   // Import the Express.js framework
 const mongoose = require('mongoose'); // Import Mongoose for MongoDB interaction
 const app = express();                // Create an Express application instance
-const PORT = process.env.PORT || 5000; // Get port from .env or default to 5000
+const PORT = process.env.PORT || 3000; // Get port from .env or default to 3000
+
+// Import routes
+const properties = require('./routes/properties'); // Path is relative to server.js
 
 // --- MongoDB Connection ---
 const MONGODB_URI = process.env.MONGODB_URI; // Get the MongoDB connection string from .env
@@ -27,6 +30,9 @@ app.use(express.json()); // Parses JSON payloads from incoming requests
 app.get('/', (req, res) => {
   res.send('Welcome to the Soudou Backend API!');
 });
+
+// Mount routers (Connect specific URLs to specific route files)
+app.use('/api/properties', properties);
 
 // Start the Server: Make your Express app listen for incoming requests
 app.listen(PORT, () => {
