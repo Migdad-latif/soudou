@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native'; // <-- CORRECT IMPORT
+import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import axios from 'axios';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-const API_URL = 'http://192.168.1.214:3000/api/properties';
+// IMPORTANT: Make sure this is your correct local IP address and port
+const API_URL = 'http://192.168.1.214:3000/api/properties'; // Your computer's local IP
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -24,38 +25,41 @@ export default function HomeScreen() {
         const applied = route.params.appliedFilters;
         const newFilters = {
           ...applied,
-          keyword: applied.keyword || '',
+          keyword: applied.keyword || '', // Ensure keyword is part of newFilters
         };
-
         setFilters(newFilters);
-        setSearchKeyword(applied.keyword || '');
-
-        // Clear filters from route
-        navigation.setParams({ appliedFilters: undefined });
+        setSearchKeyword(applied.keyword || ''); // Also update search bar input
+        navigation.setParams({ appliedFilters: undefined }); // Clear params after use
+      } else if (Object.keys(filters).length === 0 || !filters.listingType) { // Ensure default if no filters at all
+        setFilters({ listingType: 'For Sale' });
       }
     }
-  }, [isFocused, route.params]);
+  }, [isFocused, route.params]); // Depend on focus and route params
 
-  // Fetch properties when filters change
+  // Second useEffect: Fetch properties when filters state changes
   useEffect(() => {
-    fetchProperties(filters);
-  }, [filters]);
+    // Only fetch if filters are genuinely set (e.g., not initial empty object)
+    if (Object.keys(filters).length > 0) {
+      fetchProperties(filters);
+    }
+  }, [filters]); // Depend on filters state
 
-  const fetchProperties = async (filters) => {
+
+  const fetchProperties = async (currentFilters) => { // Renamed param for clarity
     try {
       setLoading(true);
       setError(null);
 
       const params = {};
-      if (filters.listingType) params.listingType = filters.listingType;
-      if (filters.minBedrooms) params.bedroomsMin = filters.minBedrooms;
-      if (filters.maxBedrooms) params.maxBedrooms = filters.maxBedrooms;
-      if (filters.minBathrooms) params.bathroomsMin = filters.minBathrooms;
-      if (filters.maxBathrooms) params.bathroomsMax = filters.maxBathrooms;
-      if (filters.propertyType && filters.propertyType.length > 0) {
-        params.propertyType = filters.propertyType.join(',');
+      if (currentFilters.listingType) params.listingType = currentFilters.listingType;
+      if (currentFilters.minBedrooms) params.bedroomsMin = currentFilters.minBedrooms;
+      if (currentFilters.maxBedrooms) params.bedroomsMax = currentFilters.maxBedrooms;
+      if (currentFilters.minBathrooms) params.bathroomsMin = currentFilters.minBathrooms;
+      if (currentFilters.maxBathrooms) params.bathroomsMax = currentFilters.maxBathrooms;
+      if (currentFilters.propertyType && currentFilters.propertyType.length > 0) {
+        params.propertyType = currentFilters.propertyType.join(',');
       }
-      if (filters.keyword) params.keyword = filters.keyword;
+      if (currentFilters.keyword) params.keyword = currentFilters.keyword;
 
 
       console.log("Fetching with params:", params); // Log parameters being sent
@@ -79,6 +83,7 @@ export default function HomeScreen() {
   };
 
   const handleFilterNavigation = () => {
+    // Pass ALL current filter states and keyword to FiltersScreen for pre-population
     navigation.navigate('Filters', {
       selectedListingType: filters.listingType,
       minBedrooms: filters.minBedrooms,
@@ -86,7 +91,7 @@ export default function HomeScreen() {
       minBathrooms: filters.minBathrooms,
       maxBathrooms: filters.maxBathrooms,
       propertyType: filters.propertyType,
-      keyword: searchKeyword,
+      keyword: searchKeyword, // Pass the search bar keyword
     });
   };
 
@@ -95,7 +100,13 @@ export default function HomeScreen() {
   };
 
   const handleSearchSubmit = () => {
+    // When user submits text, update filters with the new keyword
     setFilters(prev => ({ ...prev, keyword: searchKeyword }));
+  };
+
+  // NEW: Function to handle tapping on a property card
+  const handlePropertyPress = (propertyId) => {
+    navigation.navigate('PropertyDetails', { propertyId }); // Navigate to details screen, pass ID
   };
 
 
@@ -159,15 +170,16 @@ export default function HomeScreen() {
         <FlatList
           data={properties}
           keyExtractor={(item) => item._id}
+          // Make the entire property card TouchableOpacity
           renderItem={({ item }) => (
-            <View style={styles.propertyCard}>
+            <TouchableOpacity onPress={() => handlePropertyPress(item._id)} style={styles.propertyCard}>
               <Text style={styles.propertyTitle}>{item.title}</Text>
               <Text>{item.description}</Text>
               <Text>Price: {item.price} {item.currency}</Text>
               <Text>Type: {item.propertyType} ({item.listingType})</Text>
               <Text>Location: {item.location}</Text>
-              {/* Add more details as needed */}
-            </View>
+              {/* Add more details here later */}
+            </TouchableOpacity>
           )}
         />
       )}

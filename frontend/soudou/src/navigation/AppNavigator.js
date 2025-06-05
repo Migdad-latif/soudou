@@ -6,11 +6,12 @@ import { Ionicons } from '@expo/vector-icons'; // For icons in tab bar
 // Import your screen components
 import HomeScreen from '../screens/HomeScreen';
 import FiltersScreen from '../screens/FiltersScreen';
+import PropertyDetailsScreen from '../screens/PropertyDetailsScreen'; // <-- NEW IMPORT
 import SavedScreen from '../screens/SavedScreen';
 import EnquiriesScreen from '../screens/EnquiriesScreen';
 import AccountScreen from '../screens/AccountScreen';
 
-const HomeStack = createStackNavigator(); // Stack for Home screen and its sub-screens (like Filters)
+const HomeStack = createStackNavigator(); // Stack for Home screen and its sub-screens (like Filters, PropertyDetails)
 const Tab = createBottomTabNavigator(); // Main bottom tab navigator
 
 // Stack Navigator for the Home Tab
@@ -27,7 +28,12 @@ function HomeStackNavigator() {
         component={FiltersScreen}
         options={{ title: 'Property Filters' }} // Header for the Filters screen
       />
-      {/* Add other screens that are part of the Home flow here (e.g., PropertyDetails) */}
+      <HomeStack.Screen // <-- NEW SCREEN ADDED HERE
+        name="PropertyDetails"
+        component={PropertyDetailsScreen}
+        options={{ title: 'Property Details' }} // Header for the Property Details screen
+      />
+      {/* Add other screens that are part of the Home flow here */}
     </HomeStack.Navigator>
   );
 }
@@ -48,7 +54,6 @@ function AppNavigator() {
           } else if (route.name === 'Account') {
             iconName = focused ? 'person' : 'person-outline';
           }
-          // Default icon if somehow no name matches (shouldn't happen)
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: '#00c3a5', // Rightmove green
