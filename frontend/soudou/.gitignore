@@ -1,0 +1,30 @@
+# Node.js dependencies
+node_modules/
+.env
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+*.log
+.DS_Store
+.vscode/
+package-lock.json
+yarn.lock
+
+# React Native / Expo specific
+.expo/
+web-build/
+dist/
+expo-env.d.ts
+# Native build folders (if you ever ejected from Expo managed workflow)
+android/
+ios/
+
+# macOS specific (often created by macOS)
+.DS_Store
+*.pem
+
+# Local environment files
+.env*.local
+
+# TypeScript build info
+*.tsbuildinfo
