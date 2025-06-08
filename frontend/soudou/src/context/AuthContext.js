@@ -11,7 +11,7 @@ const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 // AuthProvider now accepts navigationRef as a prop
-export const AuthProvider = ({ children, navigationRef }) => { // <-- navigationRef prop
+export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT navigationRef PROP HERE
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,20 +86,22 @@ export const AuthProvider = ({ children, navigationRef }) => { // <-- navigation
 
   const logout = async () => {
     try {
+      console.log("DEBUG (Logout): Attempting to delete userToken from SecureStore...");
       await SecureStore.deleteItemAsync('userToken');
+      console.log("DEBUG (Logout): userToken deleted successfully from SecureStore.");
       setToken(null);
       setUser(null);
       delete axios.defaults.headers.common['Authorization'];
       // Use the navigationRef to navigate after logout
-      if (navigationRef.current) { // Check if ref is available
-        navigationRef.current.navigate('HomeTab'); // Navigate to a public screen after logout
+      if (navigationRef.current) { // Check if ref is available before navigating
+        navigationRef.current.navigate('HomeTab');
       } else {
-        console.warn("Navigation ref not available during logout.");
+        console.warn("Navigation ref not available during logout, cannot navigate.");
       }
       console.log("User logged out.");
       return { success: true };
     } catch (e) {
-      console.error("Failed to delete token from SecureStore:", e);
+      console.error("ERROR (Logout): Failed to delete token from SecureStore:", e);
       setAuthError("Logout failed.");
       return { success: false, error: "Logout failed." };
     }
