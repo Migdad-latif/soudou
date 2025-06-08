@@ -1,47 +1,39 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store'; // Import SecureStore for sensitive data
+import * as SecureStore from 'expo-secure-store';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
+// Removed: import { useNavigation } from '@react-navigation/native'; // No longer needed here
 
-// IMPORTANT: Make sure this is your correct local IP address and port
-const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for your backend API
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 
 const AuthContext = createContext();
 
-// Custom hook to easily use authentication context
 export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // Stores authenticated user data
-  const [token, setToken] = useState(null); // Stores JWT token
-  const [isLoading, setIsLoading] = useState(true); // Manages loading state during initial checks
-  const [authError, setAuthError] = useState(null); // Stores authentication errors
+// AuthProvider now accepts navigationRef as a prop
+export const AuthProvider = ({ children, navigationRef }) => { // <-- navigationRef prop
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    // Function to load token from SecureStore on app startup
     const loadStoredToken = async () => {
       try {
         const storedToken = await SecureStore.getItemAsync('userToken');
         if (storedToken) {
           setToken(storedToken);
-          // Optionally decode JWT here to get user info, or fetch /api/auth/me
-          // For now, we'll just set the token. User info will be part of login/register response
-          // and refetched on /me endpoint when implemented properly.
-          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`; // Set default auth header
-          // Example of fetching user info if token exists (will build /me endpoint later)
-          // const response = await axios.get(`${API_BASE_URL}/auth/me`);
-          // setUser(response.data.data);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
         }
       } catch (e) {
         console.error("Failed to load token from SecureStore:", e);
       } finally {
-        setIsLoading(false); // Authentication check finished
+        setIsLoading(false);
       }
     };
     loadStoredToken();
-  }, []); // Run once on component mount
+  }, []);
 
-  // Login function
   const login = async (phoneNumber, password) => {
     setAuthError(null);
     setIsLoading(true);
@@ -49,10 +41,10 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.post(`${API_BASE_URL}/auth/login`, { phoneNumber, password });
       const { token: receivedToken, user: userData } = response.data;
 
-      await SecureStore.setItemAsync('userToken', receivedToken); // Store token securely
+      await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
       setUser(userData);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`; // Set default auth header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
       console.error("Login API Error:", err);
@@ -60,25 +52,24 @@ export const AuthProvider = ({ children }) => {
       setAuthError(errorMsg);
       setToken(null);
       setUser(null);
-      delete axios.defaults.headers.common['Authorization']; // Clear header on failure
+      delete axios.defaults.headers.common['Authorization'];
       return { success: false, error: errorMsg };
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Register function
-  const register = async (name, phoneNumber, password) => {
+  const register = async (name, phoneNumber, password, role) => {
     setAuthError(null);
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/register`, { name, phoneNumber, password });
+      const response = await axios.post(`${API_BASE_URL}/auth/register`, { name, phoneNumber, password, role });
       const { token: receivedToken, user: userData } = response.data;
 
-      await SecureStore.setItemAsync('userToken', receivedToken); // Store token securely
+      await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
       setUser(userData);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`; // Set default auth header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
       console.error("Register API Error:", err);
@@ -93,13 +84,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function
   const logout = async () => {
     try {
-      await SecureStore.deleteItemAsync('userToken'); // Delete token from secure storage
+      await SecureStore.deleteItemAsync('userToken');
       setToken(null);
       setUser(null);
-      delete axios.defaults.headers.common['Authorization']; // Clear default auth header
+      delete axios.defaults.headers.common['Authorization'];
+      // Use the navigationRef to navigate after logout
+      if (navigationRef.current) { // Check if ref is available
+        navigationRef.current.navigate('HomeTab'); // Navigate to a public screen after logout
+      } else {
+        console.warn("Navigation ref not available during logout.");
+      }
       console.log("User logged out.");
       return { success: true };
     } catch (e) {
@@ -109,7 +105,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Show loading indicator while checking for stored token on app startup
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -119,7 +114,6 @@ export const AuthProvider = ({ children }) => {
     );
   }
 
-  // Provide auth state and functions to children components
   return (
     <AuthContext.Provider value={{ user, token, authError, login, register, logout, isLoading }}>
       {children}
