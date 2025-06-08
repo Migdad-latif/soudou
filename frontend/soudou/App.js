@@ -1,14 +1,14 @@
-import React, { useRef } from 'react'; // Import useRef
+import React, { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/context/AuthContext';
 
 export default function App() {
-  const navigationRef = useRef(null); // Define the navigationRef here
+  const navigationRef = useRef(null);
 
   return (
-    <AuthProvider navigationRef={navigationRef}> {/* Pass the ref as a prop */}
-      <NavigationContainer ref={navigationRef}> {/* Attach the ref to NavigationContainer */}
+    <AuthProvider navigationRef={navigationRef}>
+      <NavigationContainer ref={navigationRef}>
         <AppNavigator />
       </NavigationContainer>
     </AuthProvider>
