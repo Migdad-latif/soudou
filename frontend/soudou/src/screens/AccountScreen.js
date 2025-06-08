@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext'; // Import useAuth context
 
 // IMPORTANT: Make sure this is your correct local IP address and port
-const API_BASE_URL = 'http://192.168.1.214:3000/api';
+const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Ensure this matches your backend IP
 
 export default function AccountScreen() {
   const navigation = useNavigation();
@@ -20,7 +20,7 @@ export default function AccountScreen() {
     const fetchAgentProperties = async () => {
       // Only fetch if user is defined, is an agent, and has a token
       if (!user || user.role !== 'agent' || !token) {
-        setAgentProperties([]); // Clear properties if conditions not met
+        setAgentProperties([]); // Clear if not an agent or not logged in
         return;
       }
 
@@ -95,7 +95,6 @@ export default function AccountScreen() {
                   data={agentProperties}
                   keyExtractor={(item) => item._id}
                   renderItem={({ item }) => (
-                    // Navigate to PropertyDetails for the agent's property
                     <TouchableOpacity style={styles.agentPropertyCard} onPress={() => navigation.navigate('HomeTab', { screen: 'PropertyDetails', params: { propertyId: item._id } })}>
                       <Text style={styles.agentPropertyTitle}>{item.title}</Text>
                       <Text style={styles.agentPropertyLocation}>{item.location}</Text>
@@ -303,7 +302,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
   },
-  agentPropertyTitle: { // NEW STYLE
+  agentPropertyTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
