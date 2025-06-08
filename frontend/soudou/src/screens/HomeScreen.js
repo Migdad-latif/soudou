@@ -13,8 +13,10 @@ import {
 import axios from 'axios';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext'; // Import useAuth context
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
+const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
 const screenWidth = Dimensions.get('window').width;
 
 const PropertyImageCarousel = ({ photos }) => {
@@ -35,7 +37,7 @@ const PropertyImageCarousel = ({ photos }) => {
   const onScroll = useCallback(
     (event) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      const newIndex = Math.round(offsetX / (screenWidth - 40));
+      const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for SavedScreen card width
       if (newIndex !== currentIndex) {
         setCurrentIndex(newIndex);
       }
@@ -60,8 +62,8 @@ const PropertyImageCarousel = ({ photos }) => {
         scrollEventThrottle={16}
         initialScrollIndex={currentIndex}
         getItemLayout={(data, index) => ({
-          length: screenWidth - 40,
-          offset: (screenWidth - 40) * index,
+          length: screenWidth - 24,
+          offset: (screenWidth - 24) * index,
           index,
         })}
       />
@@ -82,15 +84,41 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const isFocused = useIsFocused();
+  const { user, token } = useAuth(); // Access user and token from AuthContext
 
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({ listingType: 'For Sale' });
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [savedPropertyIds, setSavedPropertyIds] = useState(new Set()); // NEW: Track saved property IDs
+
+
+  // --- NEW: Fetch saved properties on user/token change or screen focus ---
+  useEffect(() => {
+    const fetchSavedProperties = async () => {
+      if (!user || !token) {
+        setSavedPropertyIds(new Set()); // Clear saved if not logged in
+        return;
+      }
+      try {
+        const headers = { 'Authorization': `Bearer ${token}` };
+        const response = await axios.get(`${API_BASE_URL}/auth/saved-properties`, { headers });
+        const savedIds = new Set(response.data.data.map(prop => prop._id));
+        setSavedPropertyIds(savedIds);
+      } catch (err) {
+        console.error("Error fetching saved properties:", err);
+      }
+    };
+
+    if (isFocused) { // Fetch when screen focused
+      fetchSavedProperties();
+    }
+  }, [isFocused, user, token]); // Dependencies
+
 
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused) return; // Prevent re-fetching when not focused
 
     if (route.params?.appliedFilters) {
       const { appliedFilters } = route.params;
@@ -116,9 +144,9 @@ export default function HomeScreen() {
         const params = {};
         if (filters.listingType) params.listingType = filters.listingType;
         if (filters.minBedrooms) params.bedroomsMin = filters.minBedrooms;
-        if (filters.maxBedrooms) params.bedroomsMax = filters.maxBedrooms;
+        if (filters.maxBedrooms) params.maxBedrooms = filters.maxBedrooms;
         if (filters.minBathrooms) params.bathroomsMin = filters.minBathrooms;
-        if (filters.maxBathrooms) params.bathroomsMax = filters.maxBathrooms;
+        if (filters.maxBathrooms) params.maxBathrooms = filters.maxBathrooms;
         if (Array.isArray(filters.propertyType) && filters.propertyType.length > 0) {
           params.propertyType = filters.propertyType.join(',');
         }
@@ -162,6 +190,37 @@ export default function HomeScreen() {
   const handlePropertyPress = (propertyId) => {
     navigation.navigate('PropertyDetails', { propertyId });
   };
+
+  // --- NEW: Toggle Save Property Function ---
+  const handleToggleSave = async (propertyId) => {
+    if (!user || !token) {
+      alert('Please log in to save properties.');
+      navigation.navigate('AccountTab', { screen: 'Login' });
+      return;
+    }
+
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers }); // Empty body for POST
+
+      if (response.data.action === 'saved') {
+        setSavedPropertyIds((prev) => new Set(prev).add(propertyId));
+        alert('Property saved!');
+      } else {
+        setSavedPropertyIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(propertyId);
+          return newSet;
+        });
+        alert('Property unsaved!');
+      }
+    } catch (err) {
+      console.error("Error toggling save property:", err);
+      alert('Failed to save/unsave property. Please try again.');
+    }
+  };
+  // --- END NEW: Toggle Save Property Function ---
+
 
   if (loading) {
     return (
@@ -264,6 +323,20 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               </View>
+
+              {/* NEW: Save/Unsave Heart Icon */}
+              {user && ( // Only show if user is logged in
+                <TouchableOpacity
+                  style={styles.saveIcon}
+                  onPress={() => handleToggleSave(item._id)}
+                >
+                  <Ionicons
+                    name={savedPropertyIds.has(item._id) ? 'heart' : 'heart-outline'}
+                    size={28}
+                    color={savedPropertyIds.has(item._id) ? '#dc3545' : '#888'} // Red if saved, grey if not
+                  />
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           )}
         />
@@ -351,6 +424,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 4,
+    position: 'relative', // Needed for absolute positioning of save icon
   },
   carouselWrapper: {
     position: 'relative',
@@ -436,13 +510,13 @@ const styles = StyleSheet.create({
     color: '#fff', // White text
     fontWeight: 'bold',
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5', // Light background
-  },
-  errorText: {
-    color: 'red',
+  saveIcon: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.7)', // Slightly transparent white background
+    borderRadius: 20,
+    padding: 5,
   },
 });

@@ -35,7 +35,15 @@ const UserSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  // --- NEW FIELD: savedProperties ---
+  savedProperties: [
+    {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Property', // Reference to the Property model
+    },
+  ],
+  // --- END NEW FIELD ---
 });
 
 // Encrypt password using bcrypt (pre-save hook)

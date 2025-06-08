@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Button, ActivityIndicator, Alert } from 'react-native';
-import { Picker } from '@react-native-picker/picker'; // Re-added Picker import (it's used in FiltersScreen so might be there)
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Button, ActivityIndicator, Alert } from 'react-native'; // Ensure Button and Alert are here
+import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,12 +13,11 @@ export default function RegisterScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState('user'); // Default to 'user'
+  const [role, setRole] = useState('user');
 
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    // Basic validation
     if (!name || !phoneNumber || !password || !confirmPassword) {
       Alert.alert('Missing Fields', 'Please fill in all required fields.');
       return;
@@ -32,11 +31,9 @@ export default function RegisterScreen() {
       return;
     }
 
-
     setLoading(true);
     try {
-      // Pass the selected role to the register function
-      const result = await register(name, phoneNumber, password, role); // <-- Role is passed here
+      const result = await register(name, phoneNumber, password, role);
       if (result.success) {
         Alert.alert('Registration successful!', 'You can now sign in with your new account.');
         navigation.navigate('Login');
@@ -87,7 +84,6 @@ export default function RegisterScreen() {
         onChangeText={setConfirmPassword}
       />
 
-      {/* Role Selection Checkboxes */}
       <Text style={styles.roleLabel}>Register as:</Text>
       <View style={styles.roleSelectionContainer}>
         <TouchableOpacity
@@ -116,7 +112,6 @@ export default function RegisterScreen() {
           <Text style={[styles.roleButtonText, role === 'agent' && styles.activeRoleButtonText]}>Agent</Text>
         </TouchableOpacity>
       </View>
-
 
       {authError && <Text style={styles.errorText}>{authError}</Text>}
 
@@ -163,7 +158,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     color: '#333',
   },
-  label: { // Style for label above role buttons
+  label: {
     width: '100%',
     textAlign: 'left',
     fontSize: 16,
@@ -171,8 +166,32 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 10,
   },
-  // Removed old picker styles if they were still present and not used
-  // NEW STYLES FOR ROLE SELECTION
+  pickerWrapper: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    marginBottom: 15,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  picker: {
+    flex: 1,
+    height: 50,
+    color: 'transparent',
+  },
+  pickerSelectionText: {
+    position: 'absolute',
+    left: 15,
+    color: '#333',
+    fontSize: 16,
+    fontWeight: 'bold',
+    width: '70%',
+    textAlign: 'left',
+  },
   roleLabel: {
     width: '100%',
     textAlign: 'left',
@@ -198,7 +217,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   activeRoleButton: {
-    backgroundColor: '#e6f7ff', // Light blue background for active
+    backgroundColor: '#e6f7ff',
     borderColor: '#007AFF',
   },
   roleIcon: {
@@ -210,9 +229,8 @@ const styles = StyleSheet.create({
     color: '#444',
   },
   activeRoleButtonText: {
-    color: '#007AFF', // Blue text for active
+    color: '#007AFF',
   },
-  // END NEW STYLES
   button: {
     width: '100%',
     padding: 15,

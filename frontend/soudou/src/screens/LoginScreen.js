@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Button, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Button, ActivityIndicator } from 'react-native'; // Ensure Button is here
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 
@@ -94,6 +94,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
     backgroundColor: '#fff',
+    color: '#333',
   },
   button: {
     width: '100%',

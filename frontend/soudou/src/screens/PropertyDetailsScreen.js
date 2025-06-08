@@ -4,33 +4,36 @@ import axios from 'axios';
 import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
+import { useAuth } from '../context/AuthContext'; // Import useAuth context
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
 
 // IMPORTANT: Make sure this is your correct local IP address and port
 const API_URL = 'http://192.168.1.214:3000/api/properties';
+const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
 
 export default function PropertyDetailsScreen() {
   const route = useRoute();
   const { propertyId } = route.params;
+  const { user, token } = useAuth(); // Access user and token from AuthContext
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
+  const [isPropertySaved, setIsPropertySaved] = useState(false); // NEW: State for saved status
 
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
 
   // Default region for the map if property coordinates are not available yet
-  // This will be used only if property.coordinates are missing
   const defaultRegion = {
     latitude: 9.5098, // Center of Conakry
     longitude: -13.7123, // Center of Conakry
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
+    latitudeDelta: 0.0922, // Zoom level
+    longitudeDelta: 0.0421, // Zoom level
   };
 
 
@@ -47,6 +50,21 @@ export default function PropertyDetailsScreen() {
         const response = await axios.get(`${API_URL}/${propertyId}`);
         setProperty(response.data.data);
         setCurrentIndex(0); // reset index on property load
+
+        // --- NEW: Check if property is saved by current user ---
+        if (user && token) {
+          try {
+            const headers = { 'Authorization': `Bearer ${token}` };
+            const savedResponse = await axios.get(`${API_BASE_URL}/auth/saved-properties`, { headers });
+            const savedIds = new Set(savedResponse.data.data.map(prop => prop._id));
+            setIsPropertySaved(savedIds.has(propertyId));
+          } catch (savedErr) {
+            console.error("Error checking if property is saved:", savedErr);
+            setIsPropertySaved(false); // Assume not saved on error
+          }
+        }
+        // --- END NEW ---
+
       } catch (err) {
         console.error('Error fetching property details:', err);
         setError('Failed to load property details. Check network and ID.');
@@ -61,7 +79,35 @@ export default function PropertyDetailsScreen() {
       setError('No property ID provided. Please return to Home and try again.');
       setLoading(false);
     }
-  }, [propertyId]);
+  }, [propertyId, user, token]); // Add user and token as dependencies to re-check saved status on login/logout
+
+
+  // --- NEW: Toggle Save Property Function ---
+  const handleToggleSave = async () => {
+    if (!user || !token) {
+      alert('Please log in to save properties.');
+      navigation.navigate('AccountTab', { screen: 'Login' });
+      return;
+    }
+
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers });
+
+      if (response.data.action === 'saved') {
+        setIsPropertySaved(true);
+        alert('Property saved!');
+      } else {
+        setIsPropertySaved(false);
+        alert('Property unsaved!');
+      }
+    } catch (err) {
+      console.error("Error toggling save property:", err);
+      alert('Failed to save/unsave property. Please try again.');
+    }
+  };
+  // --- END NEW: Toggle Save Property Function ---
+
 
   // Scroll FlatList to index
   const scrollToIndex = (index, ref) => {
@@ -221,14 +267,13 @@ export default function PropertyDetailsScreen() {
             <Text style={styles.sectionHeader}>Approximate Location</Text>
             <MapView
               style={styles.map}
-              initialRegion={mapRegion} // Use dynamic mapRegion
-              // No provider specified, defaults to Apple Maps (iOS) / OSM (Android)
+              initialRegion={mapRegion}
             >
               <UrlTile
                 urlTemplate="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <Marker
-                coordinate={{ latitude: mapRegion.latitude, longitude: mapRegion.longitude }} // Use dynamic coordinates for marker
+                coordinate={{ latitude: mapRegion.latitude, longitude: mapRegion.longitude }}
                 title={property.title}
                 description={property.location}
               />
@@ -250,6 +295,20 @@ export default function PropertyDetailsScreen() {
               <Button title="Call Agent" onPress={() => console.log('Call agent')} color="#007bff" />
               <Button title="Email Agent" onPress={() => console.log('Email agent')} color="#00c3a5" />
           </View>
+
+          {/* NEW: Save/Unsave Heart Icon */}
+          {user && ( // Only show if user is logged in
+            <TouchableOpacity
+              style={styles.saveIcon}
+              onPress={handleToggleSave}
+            >
+              <Ionicons
+                name={isPropertySaved ? 'heart' : 'heart-outline'}
+                size={28}
+                color={isPropertySaved ? '#dc3545' : '#888'} // Red if saved, grey if not
+              />
+            </TouchableOpacity>
+          )}
 
         </View>
       </ScrollView>
@@ -430,5 +489,14 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 1,
     borderColor: '#ddd',
+  },
+  saveIcon: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 20,
+    padding: 5,
   },
 });

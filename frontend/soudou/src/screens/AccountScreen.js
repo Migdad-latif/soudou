@@ -1,26 +1,23 @@
-import React, { useState, useEffect } from 'react'; // Added useEffect
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Button, FlatList, ActivityIndicator } from 'react-native'; // Added FlatList, ActivityIndicator
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // Import useAuth context
+import { useAuth } from '../context/AuthContext';
 
-// IMPORTANT: Make sure this is your correct local IP address and port
-const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Ensure this matches your backend IP
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 
 export default function AccountScreen() {
   const navigation = useNavigation();
-  const { user, token, logout, isLoading: authLoading } = useAuth(); // Get user, token, logout, authLoading from context
+  const { user, token, logout, isLoading: authLoading } = useAuth();
 
   const [agentProperties, setAgentProperties] = useState([]);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertiesError, setPropertiesError] = useState(null);
 
-  // useEffect to fetch agent's properties if the user is an agent and logged in
   useEffect(() => {
     const fetchAgentProperties = async () => {
-      // Only fetch if user is defined, is an agent, and has a token
       if (!user || user.role !== 'agent' || !token) {
-        setAgentProperties([]); // Clear if not an agent or not logged in
+        setAgentProperties([]);
         return;
       }
 
@@ -39,24 +36,22 @@ export default function AccountScreen() {
     };
 
     fetchAgentProperties();
-  }, [user, token]); // Re-run when user or token changes (e.g., after login/logout)
+  }, [user, token]);
 
 
   const handleLogout = async () => {
     const result = await logout();
     if (result.success) {
       alert('Logged out successfully!');
-      // navigation is handled by AuthContext now
     } else {
       alert(result.error);
     }
   };
 
   const handleAddPropertyPress = () => {
-    navigation.navigate('HomeTab', { screen: 'AddProperty' }); // Navigate within the HomeTab stack
+    navigation.navigate('HomeTab', { screen: 'AddProperty' });
   };
 
-  // If AuthContext is still loading (checking token on startup), show a simple indicator
   if (authLoading) {
     return (
       <View style={styles.center}>
@@ -71,14 +66,12 @@ export default function AccountScreen() {
       <Text style={styles.header}>Account</Text>
 
       {user ? (
-        // User is logged in: Show their profile and agent dashboard if applicable
         <View style={styles.loggedInCard}>
           <Text style={styles.loggedInHeader}>Welcome, {user.name}!</Text>
           <Text style={styles.loggedInText}>Phone: {user.phoneNumber}</Text>
           {user.email && <Text style={styles.loggedInText}>Email: {user.email}</Text>}
           <Text style={styles.loggedInText}>Role: {user.role}</Text>
 
-          {/* Agent Dashboard Section */}
           {user.role === 'agent' && (
             <View style={styles.agentDashboardSection}>
               <Text style={styles.sectionHeader}>Your Properties</Text>
@@ -98,11 +91,10 @@ export default function AccountScreen() {
                     <TouchableOpacity style={styles.agentPropertyCard} onPress={() => navigation.navigate('HomeTab', { screen: 'PropertyDetails', params: { propertyId: item._id } })}>
                       <Text style={styles.agentPropertyTitle}>{item.title}</Text>
                       <Text style={styles.agentPropertyLocation}>{item.location}</Text>
-                      {/* You can add edit/delete buttons here later */}
                     </TouchableOpacity>
                   )}
                   style={styles.agentPropertiesList}
-                  showsVerticalScrollIndicator={false} // Ensure list can scroll if many properties
+                  showsVerticalScrollIndicator={false}
                 />
               ) : (
                 <Text style={styles.noPropertiesText}>You haven't added any properties yet.</Text>
@@ -110,13 +102,11 @@ export default function AccountScreen() {
             </View>
           )}
 
-          {/* Logout Button */}
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutButtonText}>Log Out</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        // User is NOT logged in: Show sign-in/register options
         <View style={styles.card}>
           <Text style={styles.cardHeader}>Sign In</Text>
           <Text style={styles.cardDescription}>
@@ -169,11 +159,11 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5', // Light background
+    backgroundColor: '#f5f5f5',
     paddingTop: 50,
-    alignItems: 'center', // Center content horizontally
+    alignItems: 'center',
   },
-  center: { // Used by authLoading state
+  center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -183,15 +173,15 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 20,
-    color: '#333', // Dark text
+    color: '#333',
   },
   card: {
-    backgroundColor: '#fff', // Light background
+    backgroundColor: '#fff',
     borderRadius: 8,
     padding: 20,
     marginHorizontal: 20,
     marginBottom: 20,
-    width: '90%', // Adjust width as needed
+    width: '90%',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -203,11 +193,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 10,
-    color: '#002f3d', // Dark text
+    color: '#002f3d',
   },
   cardDescription: {
     fontSize: 16,
-    color: '#555', // Darker grey text
+    color: '#555',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 24,
@@ -215,30 +205,30 @@ const styles = StyleSheet.create({
   signInButton: {
     width: '100%',
     padding: 15,
-    backgroundColor: '#00c3a5', // Rightmove green
+    backgroundColor: '#00c3a5',
     borderRadius: 8,
     alignItems: 'center',
     marginBottom: 10,
   },
   signInButtonText: {
-    color: '#fff', // White text
+    color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
   createAccountLink: {
     fontSize: 16,
-    color: '#007bff', // Blue accent
+    color: '#007bff',
     fontWeight: 'bold',
     paddingVertical: 5,
   },
   loggedInCard: {
-    backgroundColor: '#fff', // Light background
+    backgroundColor: '#fff',
     borderRadius: 8,
     padding: 20,
     marginHorizontal: 20,
     marginBottom: 20,
     width: '90%',
-    alignItems: 'flex-start', // Align text to left
+    alignItems: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -249,52 +239,52 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 10,
-    color: '#002f3d', // Dark text
+    color: '#002f3d',
   },
   loggedInText: {
     fontSize: 16,
-    color: '#555', // Darker grey text
+    color: '#555',
     marginBottom: 5,
   },
   logoutButton: {
     marginTop: 20,
     width: '100%',
     padding: 15,
-    backgroundColor: '#dc3545', // Red for logout
+    backgroundColor: '#dc3545',
     borderRadius: 8,
     alignItems: 'center',
   },
   logoutButtonText: {
-    color: '#fff', // White text
+    color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  addPropertyButton: { // Style for Add New Property button
+  addPropertyButton: {
     marginTop: 15,
     width: '100%',
     padding: 15,
-    backgroundColor: '#28a745', // Green color
+    backgroundColor: '#28a745',
     borderRadius: 8,
     alignItems: 'center',
   },
   addPropertyButtonText: {
-    color: '#fff', // White text
+    color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  agentDashboardSection: { // NEW STYLE for agent dashboard section
+  agentDashboardSection: {
     width: '100%',
     marginTop: 20,
     paddingTop: 15,
     borderTopWidth: 1,
     borderTopColor: '#eee',
   },
-  agentPropertiesList: { // NEW STYLE for FlatList of agent properties
-    maxHeight: 200, // Limit height to make it scrollable
+  agentPropertiesList: {
+    maxHeight: 200,
     width: '100%',
     marginTop: 10,
   },
-  agentPropertyCard: { // NEW STYLE for individual agent property in dashboard
+  agentPropertyCard: {
     backgroundColor: '#f9f9f9',
     padding: 10,
     borderRadius: 8,
@@ -307,11 +297,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
-  agentPropertyLocation: { // NEW STYLE
+  agentPropertyLocation: {
     fontSize: 14,
     color: '#666',
   },
-  noPropertiesText: { // NEW STYLE
+  noPropertiesText: {
     fontSize: 14,
     color: '#888',
     textAlign: 'center',
