@@ -31,13 +31,12 @@ router.post('/', protect, asyncHandler(async (req, res) => {
       {
         senderId: req.user.id,
         message: message,
+        deletedFor: []
       },
     ],
     status: 'open',
-    deletedFor: {
-      sender: false,
-      agent: false,
-    },
+    deletedForSender: false,
+    deletedForAgent: false
   });
 
   res.status(201).json({
@@ -74,7 +73,7 @@ router.post('/:id/message', protect, asyncHandler(async (req, res) => {
     throw new Error('Message cannot be empty');
   }
 
-  enquiry.conversation.push({ senderId: req.user.id, message: message });
+  enquiry.conversation.push({ senderId: req.user.id, message: message, deletedFor: [] });
 
   if (req.user.role === 'agent') {
     enquiry.status = 'replied';
@@ -120,19 +119,29 @@ router.patch('/:id/status', protect, asyncHandler(async (req, res) => {
 // @desc    Get all enquiries sent by the logged-in user
 // @access  Private
 router.get('/my-sent', protect, asyncHandler(async (req, res) => {
-  const enquiries = await Enquiry.find({
+  const enquiries = await Enquiry.find({ 
     sender: req.user.id,
-    'deletedFor.sender': { $ne: true }
+    deletedForSender: { $ne: true } 
   })
     .populate('property', 'title location photos')
     .populate('sender', 'name phoneNumber email')
     .populate('recipientAgent', 'name phoneNumber email')
     .populate('conversation.senderId', 'name phoneNumber email');
 
+  const filteredEnquiries = enquiries.map(enquiry => {
+    const conversation = enquiry.conversation.filter(msg => {
+      return !(msg.deletedFor && msg.deletedFor.includes(req.user._id));
+    });
+    return {
+      ...enquiry.toObject(),
+      conversation,
+    };
+  });
+
   res.status(200).json({
     success: true,
-    count: enquiries.length,
-    data: enquiries,
+    count: filteredEnquiries.length,
+    data: filteredEnquiries,
   });
 }));
 
@@ -140,26 +149,73 @@ router.get('/my-sent', protect, asyncHandler(async (req, res) => {
 // @desc    Get all enquiries received by the logged-in agent
 // @access  Private (agent only)
 router.get('/my-received', protect, authorize('agent'), asyncHandler(async (req, res) => {
-  const enquiries = await Enquiry.find({
+  const enquiries = await Enquiry.find({ 
     recipientAgent: req.user.id,
-    'deletedFor.agent': { $ne: true }
+    deletedForAgent: { $ne: true }
   })
     .populate('property', 'title location photos')
     .populate('sender', 'name phoneNumber email')
     .populate('recipientAgent', 'name phoneNumber email')
     .populate('conversation.senderId', 'name phoneNumber email');
 
+  const filteredEnquiries = enquiries.map(enquiry => {
+    const conversation = enquiry.conversation.filter(msg => {
+      return !(msg.deletedFor && msg.deletedFor.includes(req.user._id));
+    });
+    return {
+      ...enquiry.toObject(),
+      conversation,
+    };
+  });
+
   res.status(200).json({
     success: true,
-    count: enquiries.length,
-    data: enquiries,
+    count: filteredEnquiries.length,
+    data: filteredEnquiries,
   });
 }));
 
-// @route   DELETE /api/enquiries/:id
-// @desc    Soft delete an enquiry for the logged-in user (not for everyone)
-// @access  Private (sender or agent only)
-router.delete('/:id', protect, asyncHandler(async (req, res) => {
+// @route   DELETE /api/enquiries/:enquiryId/messages/:messageIndex
+// @desc    Soft delete a message for the logged-in user only
+// @access  Private
+router.delete('/:enquiryId/messages/:messageIndex', protect, asyncHandler(async (req, res) => {
+  const { enquiryId, messageIndex } = req.params;
+
+  const enquiry = await Enquiry.findById(enquiryId);
+  if (!enquiry) {
+    res.status(404);
+    throw new Error('Enquiry not found');
+  }
+
+  const message = enquiry.conversation[messageIndex];
+  if (!message) {
+    res.status(404);
+    throw new Error('Message not found');
+  }
+
+  const isParticipant = enquiry.sender.toString() === req.user.id ||
+                        enquiry.recipientAgent.toString() === req.user.id;
+  if (!isParticipant) {
+    res.status(403);
+    throw new Error('Not authorized to modify this message');
+  }
+
+  if (!message.deletedFor) {
+    message.deletedFor = [];
+  }
+  if (!message.deletedFor.includes(req.user._id)) {
+    message.deletedFor.push(req.user._id);
+  }
+
+  await enquiry.save();
+
+  res.status(200).json({ success: true, message: 'Message deleted for you only' });
+}));
+
+// @route   PATCH /api/enquiries/:id/delete
+// @desc    Soft delete an enquiry for the requesting user only
+// @access  Private
+router.patch('/:id/delete', protect, asyncHandler(async (req, res) => {
   const enquiry = await Enquiry.findById(req.params.id);
 
   if (!enquiry) {
@@ -167,23 +223,20 @@ router.delete('/:id', protect, asyncHandler(async (req, res) => {
     throw new Error('Enquiry not found');
   }
 
-  const isSender = enquiry.sender.toString() === req.user.id;
-  const isAgent = enquiry.recipientAgent.toString() === req.user.id;
+  const userId = req.user._id.toString();
 
-  if (!isSender && !isAgent) {
-    res.status(401);
-    throw new Error('Not authorized to delete this enquiry');
-  }
-
-  if (isSender) {
-    enquiry.deletedFor.sender = true;
-  } else if (isAgent) {
-    enquiry.deletedFor.agent = true;
+  if (enquiry.sender.toString() === userId) {
+    enquiry.deletedForSender = true;
+  } else if (enquiry.recipientAgent.toString() === userId) {
+    enquiry.deletedForAgent = true;
+  } else {
+    res.status(403);
+    throw new Error('You are not authorized to delete this enquiry');
   }
 
   await enquiry.save();
 
-  res.status(200).json({ success: true, message: 'Enquiry deleted for you only' });
+  res.status(200).json({ success: true, message: 'Enquiry hidden for this user' });
 }));
 
 module.exports = router;

@@ -232,43 +232,48 @@ export default function EnquiriesScreen() {
     }
   };
 
-  // Handle message deletion
   const handleDeleteEnquiry = async (enquiryId) => {
-    Alert.alert(
-      "Delete Enquiry",
-      "Are you sure you want to delete this enquiry and its conversation?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Delete",
-          onPress: async () => {
-            if (!user || !token) {
-              Alert.alert('Authentication Required', 'Please log in to delete messages.');
-              return;
-            }
-            try {
-              const headers = { 'Authorization': `Bearer ${token}` };
-              const response = await axios.delete(`${ENQUIRIES_API_URL}/${enquiryId}`, { headers }); 
+  Alert.alert(
+    "Delete Enquiry",
+    "Are you sure you want to delete this enquiry and its conversation?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel"
+      },
+      {
+        text: "Delete",
+        onPress: async () => {
+          if (!user || !token) {
+            Alert.alert('Authentication Required', 'Please log in to delete messages.');
+            return;
+          }
 
-              if (response.status === 200) {
-                Alert.alert('Success', 'Enquiry deleted successfully.');
-                setEnquiries(prev => prev.filter(enq => enq._id !== enquiryId)); // Remove from local state
-              } else {
-                Alert.alert('Error', `Failed to delete enquiry: ${response.data?.error || 'Please try again.'}`);
-              }
-            } catch (err) {
-              console.error("Error deleting enquiry:", err);
-              Alert.alert('Error', 'Failed to delete enquiry. Please check your network.');
+          try {
+            const headers = { 'Authorization': `Bearer ${token}` };
+
+            // Make request
+            const response = await axios.patch(`${ENQUIRIES_API_URL}/${enquiryId}/delete`, {}, { headers });
+
+            console.log('Message deleted:', response.data);
+
+            if (response.status === 200) {
+              Alert.alert('Success', 'Enquiry deleted successfully.');
+              setEnquiries(prev => prev.filter(enq => enq._id !== enquiryId));
+            } else {
+              Alert.alert('Error', `Failed to delete enquiry: ${response.data?.error || 'Please try again.'}`);
             }
-          },
-          style: "destructive"
-        }
-      ]
-    );
-  };
+
+          } catch (error) {
+            console.error('Error deleting message:', error.response?.data?.message || error.message || 'Unknown error');
+            Alert.alert('Failed', 'Could not delete the enquiry. Try again later.');
+          }
+        },
+        style: "destructive"
+      }
+    ]
+  );
+};
 
 
   if (authLoading || loading) {
