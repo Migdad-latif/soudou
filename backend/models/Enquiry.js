@@ -15,6 +15,11 @@ const ConversationSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  deletedFor: { // NEW: Array of user IDs for whom this specific message is soft-deleted
+    type: [mongoose.Schema.ObjectId],
+    ref: 'User',
+    default: []
+  }
 });
 
 const EnquirySchema = new mongoose.Schema({
@@ -46,12 +51,15 @@ const EnquirySchema = new mongoose.Schema({
   repliedAt: { // Timestamp for when the enquiry was last replied to
     type: Date,
   },
-
-  deletedFor: {
-  sender: { type: Boolean, default: false },
-  agent: { type: Boolean, default: false }
-},
-
+  // NEW FIELDS for soft-delete of entire enquiry for a user
+  deletedForSender: {
+    type: Boolean,
+    default: false
+  },
+  deletedForAgent: {
+    type: Boolean,
+    default: false
+  }
 });
 
 module.exports = mongoose.model('Enquiry', EnquirySchema);

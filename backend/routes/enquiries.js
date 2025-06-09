@@ -31,12 +31,9 @@ router.post('/', protect, asyncHandler(async (req, res) => {
       {
         senderId: req.user.id,
         message: message,
-        deletedFor: []
       },
     ],
     status: 'open',
-    deletedForSender: false,
-    deletedForAgent: false
   });
 
   res.status(201).json({
@@ -73,7 +70,7 @@ router.post('/:id/message', protect, asyncHandler(async (req, res) => {
     throw new Error('Message cannot be empty');
   }
 
-  enquiry.conversation.push({ senderId: req.user.id, message: message, deletedFor: [] });
+  enquiry.conversation.push({ senderId: req.user.id, message: message });
 
   if (req.user.role === 'agent') {
     enquiry.status = 'replied';
@@ -86,6 +83,7 @@ router.post('/:id/message', protect, asyncHandler(async (req, res) => {
 
   res.status(200).json({ success: true, message: 'Message added to conversation', data: enquiry });
 }));
+
 
 // @route   PATCH /api/enquiries/:id/status
 // @desc    Update the status of an enquiry (e.g., mark as 'read')
@@ -115,25 +113,27 @@ router.patch('/:id/status', protect, asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, message: `Enquiry status updated to ${status}`, data: enquiry });
 }));
 
+
 // @route   GET /api/enquiries/my-sent
 // @desc    Get all enquiries sent by the logged-in user
 // @access  Private
 router.get('/my-sent', protect, asyncHandler(async (req, res) => {
   const enquiries = await Enquiry.find({ 
     sender: req.user.id,
-    deletedForSender: { $ne: true } 
+    deletedForSender: { $ne: true } // <-- NEW: Filter out if soft-deleted by sender
   })
     .populate('property', 'title location photos')
     .populate('sender', 'name phoneNumber email')
     .populate('recipientAgent', 'name phoneNumber email')
     .populate('conversation.senderId', 'name phoneNumber email');
 
+  // Filter messages within the conversation that are soft-deleted for this user
   const filteredEnquiries = enquiries.map(enquiry => {
     const conversation = enquiry.conversation.filter(msg => {
       return !(msg.deletedFor && msg.deletedFor.includes(req.user._id));
     });
     return {
-      ...enquiry.toObject(),
+      ...enquiry.toObject(), // Convert Mongoose document to plain object
       conversation,
     };
   });
@@ -151,19 +151,20 @@ router.get('/my-sent', protect, asyncHandler(async (req, res) => {
 router.get('/my-received', protect, authorize('agent'), asyncHandler(async (req, res) => {
   const enquiries = await Enquiry.find({ 
     recipientAgent: req.user.id,
-    deletedForAgent: { $ne: true }
+    deletedForAgent: { $ne: true } // <-- NEW: Filter out if soft-deleted by agent
   })
     .populate('property', 'title location photos')
     .populate('sender', 'name phoneNumber email')
     .populate('recipientAgent', 'name phoneNumber email')
     .populate('conversation.senderId', 'name phoneNumber email');
 
+  // Filter messages within the conversation that are soft-deleted for this user
   const filteredEnquiries = enquiries.map(enquiry => {
     const conversation = enquiry.conversation.filter(msg => {
       return !(msg.deletedFor && msg.deletedFor.includes(req.user._id));
     });
     return {
-      ...enquiry.toObject(),
+      ...enquiry.toObject(), // Convert Mongoose document to plain object
       conversation,
     };
   });
@@ -194,16 +195,18 @@ router.delete('/:enquiryId/messages/:messageIndex', protect, asyncHandler(async 
   }
 
   const isParticipant = enquiry.sender.toString() === req.user.id ||
-                        enquiry.recipientAgent.toString() === req.user.id;
+                         enquiry.recipientAgent.toString() === req.user.id;
   if (!isParticipant) {
     res.status(403);
     throw new Error('Not authorized to modify this message');
   }
 
+  // Ensure deletedFor array exists on the message
   if (!message.deletedFor) {
     message.deletedFor = [];
   }
-  if (!message.deletedFor.includes(req.user._id)) {
+  // Add user's ID to deletedFor array
+  if (!message.deletedFor.includes(req.user._id)) { // Check if not already included
     message.deletedFor.push(req.user._id);
   }
 
@@ -213,7 +216,7 @@ router.delete('/:enquiryId/messages/:messageIndex', protect, asyncHandler(async 
 }));
 
 // @route   PATCH /api/enquiries/:id/delete
-// @desc    Soft delete an enquiry for the requesting user only
+// @desc    Soft delete an enquiry (hide the entire thread for the requesting user only)
 // @access  Private
 router.patch('/:id/delete', protect, asyncHandler(async (req, res) => {
   const enquiry = await Enquiry.findById(req.params.id);
