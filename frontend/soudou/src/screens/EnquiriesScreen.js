@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image, Alert, Button, Dimensions, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image, Alert, Button, Dimensions, TextInput, Modal, ScrollView as RNScrollView } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`;
 const screenWidth = Dimensions.get('window').width;
+const screenHeight = Dimensions.get('window').height;
 
 
 export default function EnquiriesScreen() {
@@ -15,17 +16,23 @@ export default function EnquiriesScreen() {
   const isFocused = useIsFocused();
   const { user, token, isLoading: authLoading } = useAuth();
 
+  // Initialize viewType based on user role (agent defaults to received, user to sent)
+  const [viewType, setViewType] = useState(user?.role === 'agent' ? 'received' : 'sent');
+
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [viewType, setViewType] = useState('sent'); // 'sent' or 'received'
 
   const [replyModalVisible, setReplyModalVisible] = useState(false);
   const [currentEnquiryToReply, setCurrentEnquiryToReply] = useState(null);
   const [replyMessage, setReplyMessage] = useState('');
 
+  const [collapsedStates, setCollapsedStates] = useState({});
 
-  // Helper function for image carousel (reused from HomeScreen) - must be here if used
+  const modalConversationScrollRef = useRef(null);
+  const conversationScrollRefs = useRef({});
+
+
   const PropertyImageCarousel = ({ photos }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const flatListRef = useRef();
@@ -33,8 +40,8 @@ export default function EnquiriesScreen() {
     const onArrowPress = useCallback(
       (direction) => {
         let newIndex = currentIndex + direction;
-        if (newIndex < 0) newIndex = photos.length - 1; // Wrap around
-        else if (newIndex >= photos.length) newIndex = 0; // Wrap around
+        if (newIndex < 0) newIndex = photos.length - 1;
+        else if (newIndex >= photos.length) newIndex = 0;
         setCurrentIndex(newIndex);
         flatListRef.current?.scrollToIndex({ index: newIndex, animated: true });
       },
@@ -44,7 +51,7 @@ export default function EnquiriesScreen() {
     const onScroll = useCallback(
       (event) => {
         const offsetX = event.nativeEvent.contentOffset.x;
-        const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for SavedScreen card width
+        const newIndex = Math.round(offsetX / (screenWidth - 24));
         if (newIndex !== currentIndex) {
           setCurrentIndex(newIndex);
         }
@@ -52,7 +59,7 @@ export default function EnquiriesScreen() {
       [currentIndex]
     );
 
-    const getItemLayout = useCallback((data, index) => ({ // For FlatList performance
+    const getItemLayout = useCallback((data, index) => ({
       length: screenWidth - 24,
       offset: (screenWidth - 24) * index,
       index,
@@ -76,12 +83,12 @@ export default function EnquiriesScreen() {
           getItemLayout={getItemLayout}
           initialScrollIndex={currentIndex}
         />
-        {photos.length > 1 && ( // Only show arrows if more than one photo
+        {photos.length > 1 && (
           <>
-            <TouchableOpacity style={[styles.arrowButton, styles.leftArrow]} onPress={() => onArrowPress(-1)} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.carouselArrowButton, styles.carouselLeftArrow]} onPress={() => onArrowPress(-1)} activeOpacity={0.7}>
               <Ionicons name="chevron-back-circle" size={36} color="rgba(255,255,255,0.8)" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.arrowButton, styles.rightArrow]} onPress={() => onArrowPress(1)} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.carouselArrowButton, styles.carouselRightArrow]} onPress={() => onArrowPress(1)} activeOpacity={0.7}>
               <Ionicons name="chevron-forward-circle" size={36} color="rgba(255,255,255,0.8)" />
             </TouchableOpacity>
           </>
@@ -105,7 +112,7 @@ export default function EnquiriesScreen() {
       let response;
       if (viewType === 'sent') {
         response = await axios.get(`${ENQUIRIES_API_URL}/my-sent`, { headers });
-      } else { // viewType === 'received'
+      } else {
         if (user.role !== 'agent') {
           Alert.alert('Access Denied', 'Only agents can view received enquiries.');
           setEnquiries([]);
@@ -114,7 +121,19 @@ export default function EnquiriesScreen() {
         }
         response = await axios.get(`${ENQUIRIES_API_URL}/my-received`, { headers });
       }
-      setEnquiries(response.data.data);
+      setEnquiries(prev => {
+        const fetchedEnquiries = response.data.data.map(enq => ({
+          ...enq,
+          conversation: enq.conversation || []
+        }));
+        const newCollapsedStates = fetchedEnquiries.reduce((acc, enquiry) => {
+          acc[enquiry._id] = true;
+          return acc;
+        }, {});
+        setCollapsedStates(newCollapsedStates);
+        return fetchedEnquiries;
+      });
+      
     } catch (err) {
       console.error("Error fetching enquiries:", err);
       setError('Failed to load enquiries.');
@@ -124,19 +143,33 @@ export default function EnquiriesScreen() {
   }, [user, token, viewType]);
 
   useEffect(() => {
+    // This effect ensures viewType is correctly set on user/token change (e.g., login/logout)
+    if (user && viewType !== (user.role === 'agent' ? 'received' : 'sent')) {
+        setViewType(user.role === 'agent' ? 'received' : 'sent');
+    }
+    
     if (isFocused) {
       fetchEnquiries();
     }
-  }, [isFocused, fetchEnquiries]);
+  }, [isFocused, user, fetchEnquiries]);
+
+
+  const toggleMessageCollapse = (enquiryId) => {
+    setCollapsedStates(prev => ({
+      ...prev,
+      [enquiryId]: !prev[enquiryId]
+    }));
+    if (conversationScrollRefs.current[enquiryId] && collapsedStates[enquiryId]) {
+      setTimeout(() => {
+        conversationScrollRefs.current[enquiryId].scrollToEnd({ animated: true });
+      }, 50);
+    }
+  };
 
 
   const handleViewEnquiry = async (enquiry) => {
-    // Open the reply modal to view full conversation and allow new messages
-    setCurrentEnquiryToReply(enquiry);
-    setReplyModalVisible(true);
-    setReplyMessage(''); // Clear reply message input for new message
+    toggleMessageCollapse(enquiry._id);
 
-    // Mark as read if it's a received enquiry and status is 'sent'
     if (viewType === 'received' && enquiry.status === 'sent' && user?.role === 'agent' && token) {
       try {
         const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -151,7 +184,7 @@ export default function EnquiriesScreen() {
 
   const handleReplySubmission = async () => {
     if (!replyMessage.trim()) {
-      Alert.alert('Missing Message', 'Please type your reply message.');
+      Alert.alert('Missing Message', 'Please type your message.');
       return;
     }
     if (!currentEnquiryToReply) return;
@@ -166,20 +199,30 @@ export default function EnquiriesScreen() {
       if (response.status === 200) {
         Alert.alert('Success', 'Message sent!');
         setReplyMessage('');
-        // Update local state for the replied enquiry (new message added to conversation array)
-        // Ensure user ID and name are correctly populated for display in bubbles
+        setLoading(false);
+
         const newMessage = {
-          senderId: user.id, // Only ID needed for backend
+          senderId: user.id,
           message: replyMessage,
           timestamp: new Date(),
-          // For frontend display, we need sender's name too.
-          // Add a dummy 'name' field for display, it won't be sent to backend.
-          sender: { _id: user.id, name: user.name || 'You' } // Add name for display
+          sender: { _id: user.id, name: user.name || 'You' }
         };
-        setEnquiries(prev => prev.map(e => e._id === currentEnquiryToReply._id ? { ...e, conversation: [...(e.conversation || []), newMessage], status: user.role === 'agent' ? 'replied' : 'open' } : e));
+        setEnquiries(prev => prev.map(enq => 
+          enq._id === currentEnquiryToReply._id 
+            ? { ...enq, conversation: [...(enq.conversation || []), newMessage], status: user.role === 'agent' ? 'replied' : 'open' } 
+            : enq
+        ));
         
+        if (modalConversationScrollRef.current) {
+          modalConversationScrollRef.current.scrollToEnd({ animated: true });
+        }
+        
+        setReplyModalVisible(false);
+        setCurrentEnquiryToReply(null);
+
       } else {
         Alert.alert('Error', `Failed to send message: ${response.data?.error || 'Please try again.'}`);
+        setLoading(false);
       }
     } catch (err) {
       console.error("Error sending message:", err);
@@ -187,6 +230,44 @@ export default function EnquiriesScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle message deletion
+  const handleDeleteEnquiry = async (enquiryId) => {
+    Alert.alert(
+      "Delete Enquiry",
+      "Are you sure you want to delete this enquiry and its conversation?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Delete",
+          onPress: async () => {
+            if (!user || !token) {
+              Alert.alert('Authentication Required', 'Please log in to delete messages.');
+              return;
+            }
+            try {
+              const headers = { 'Authorization': `Bearer ${token}` };
+              const response = await axios.delete(`${ENQUIRIES_API_URL}/${enquiryId}`, { headers }); 
+
+              if (response.status === 200) {
+                Alert.alert('Success', 'Enquiry deleted successfully.');
+                setEnquiries(prev => prev.filter(enq => enq._id !== enquiryId)); // Remove from local state
+              } else {
+                Alert.alert('Error', `Failed to delete enquiry: ${response.data?.error || 'Please try again.'}`);
+              }
+            } catch (err) {
+              console.error("Error deleting enquiry:", err);
+              Alert.alert('Error', 'Failed to delete enquiry. Please check your network.');
+            }
+          },
+          style: "destructive"
+        }
+      ]
+    );
   };
 
 
@@ -217,26 +298,36 @@ export default function EnquiriesScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>My Enquiries</Text>
+   <View style={styles.container}>
+  <Text style={styles.header}>My Enquiries</Text>
 
-      {/* Toggle between Sent and Received */}
-      {user?.role === 'agent' && (
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggleButton, viewType === 'sent' && styles.activeToggleButton]}
-            onPress={() => setViewType('sent')}
-          >
-            <Text style={[styles.toggleButtonText, viewType === 'sent' && styles.activeToggleButtonText]}>Sent</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleButton, viewType === 'received' && styles.activeToggleButton]}
-            onPress={() => setViewType('received')}
-          >
-            <Text style={[styles.toggleButtonText, viewType === 'received' && styles.activeToggleButtonText]}>Received</Text>
-          </TouchableOpacity>
-        </View>
+  {/* Toggle (actually single button) shown based on role */}
+  {user && (
+    <View style={styles.toggleContainer}>
+      {user.role !== 'agent' ? (
+        // Regular user: show only "Sent"
+        <TouchableOpacity
+          style={[styles.toggleButton, viewType === 'sent' && styles.activeToggleButton]}
+          onPress={() => setViewType('sent')}
+        >
+          <Text style={[styles.toggleButtonText, viewType === 'sent' && styles.activeToggleButtonText]}>
+            Sent
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        // Agent: show only "Received"
+        <TouchableOpacity
+          style={[styles.toggleButton, viewType === 'received' && styles.activeToggleButton]}
+          onPress={() => setViewType('received')}
+        >
+          <Text style={[styles.toggleButtonText, viewType === 'received' && styles.activeToggleButtonText]}>
+            Received
+          </Text>
+        </TouchableOpacity>
       )}
+    </View>
+  )}
+
 
       {enquiries.length === 0 ? (
         <View style={styles.center}>
@@ -249,8 +340,9 @@ export default function EnquiriesScreen() {
           data={enquiries}
           keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.enquiryCard} onPress={() => handleViewEnquiry(item)}>
-              <View style={styles.enquiryCardHeader}>
+            <View style={styles.enquiryCard}>
+              {/* Added TouchableOpacity around header for collapse/expand */}
+              <TouchableOpacity style={styles.enquiryCardHeaderTouchable} onPress={() => toggleMessageCollapse(item._id)}>
                 <Image
                   source={{ uri: item.property?.photos?.[0] || 'https://placehold.co/100x100/eeeeee/888888?text=No+Image' }}
                   style={styles.propertyThumbnail}
@@ -271,29 +363,57 @@ export default function EnquiriesScreen() {
                   {item.status === 'read' && <Text style={styles.statusText}>Read</Text>}
                   {item.status === 'sent' && <Text style={styles.statusText}>Sent</Text>}
                 </View>
-              </View>
-              {/* Display all conversation messages */}
-              <View style={styles.conversationContainer}>
-                {item.conversation?.map((msg, msgIdx) => (
-                  <View key={msgIdx} style={[styles.messageBubble, msg.senderId === user?.id ? styles.myMessage : styles.otherMessage]}>
-                    <Text style={styles.messageSender}>
-                      {/* Check if msg.senderId is equal to user.id or currentEnquiryToReply.recipientAgent.id if not populated */}
-                      {msg.senderId === user?.id ? 'You' : msg.senderId?.name || (currentEnquiryToReply?.recipientAgent?.name === msg.senderId?.name ? 'Agent' : 'User')}:
-                    </Text>
-                    <Text style={styles.messageText}>{msg.message}</Text>
-                    <Text style={styles.messageTimestamp}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </TouchableOpacity>
+              {/* Display all conversation messages - now collapsible */}
+              <View style={collapsedStates[item._id] ? styles.collapsedContent : styles.expandedContent}>
+                <RNScrollView style={styles.conversationScrollArea} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" 
+                  ref={ref => { conversationScrollRefs.current[item._id] = ref; }}
+                  onContentSizeChange={(contentWidth, contentHeight) => {
+                    if (conversationScrollRefs.current[item._id] && !collapsedStates[item._id]) { // Scroll to end only if expanded
+                      conversationScrollRefs.current[item._id].scrollToEnd({ animated: true });
+                    }
+                  }}
+                >
+                  <View style={styles.conversationContainer}>
+                    {item.conversation?.map((msg, msgIdx) => (
+                      <View key={msgIdx} style={[styles.messageBubble, msg.senderId === user?.id ? styles.myMessage : styles.otherMessage]}>
+                        <Text style={styles.messageSender}>
+                          {msg.senderId === user?.id ? 'You' : (msg.senderId?.name || (item.recipientAgent?._id === msg.senderId ? item.recipientAgent?.name : item.sender?.name || 'User'))}:
+                        </Text>
+                        <Text style={styles.messageText}>{msg.message}</Text>
+                        <Text style={styles.messageTimestamp}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                </RNScrollView>
+                {/* Scroll Arrows */}
+                {item.conversation && item.conversation.length > 3 && ( // Show if more than 3 messages (to require scrolling)
+                  <View style={styles.arrowOverlayContainer}>
+                    <TouchableOpacity
+                      style={[styles.scrollArrow, styles.scrollArrowUp]}
+                      onPress={() => conversationScrollRefs.current[item._id]?.scrollTo({ y: 0, animated: true })}
+                    >
+                      <Ionicons name="chevron-up-circle" size={28} color="#007bff" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.scrollArrow, styles.scrollArrowDown]}
+                      onPress={() => conversationScrollRefs.current[item._id]?.scrollToEnd({ animated: true })}
+                    >
+                      <Ionicons name="chevron-down-circle" size={28} color="#007bff" />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
               
               {viewType === 'received' && item.sender && (
-                <Text style={styles.enquirySender}>Original Sender: {item.sender?.name || 'User'} ({item.sender?.phoneNumber || 'N/A'})</Text>
+                <Text style={styles.enquirySender}>From: {item.sender?.name || 'User'} </Text>
               )}
               {viewType === 'sent' && item.recipientAgent && (
-                <Text style={styles.enquiryRecipient}>Recipient Agent: {item.recipientAgent?.name || 'Agent'} ({item.recipientAgent?.phoneNumber || 'N/A'})</Text>
+                <Text style={styles.enquiryRecipient}>To: {item.recipientAgent?.name || 'Agent'} </Text>
               )}
               {/* Send Message Button for agents on received, and for users on sent if agent replied */}
-              {((viewType === 'received' && user?.role === 'agent') || (viewType === 'sent' && item.status === 'replied')) && (
+              {((viewType === 'received' && user?.role === 'agent') || (viewType === 'sent' && item.conversation && item.conversation.length > 1)) && (
                 <TouchableOpacity style={styles.replyButton} onPress={() => {
                   setCurrentEnquiryToReply(item);
                   setReplyModalVisible(true);
@@ -302,7 +422,14 @@ export default function EnquiriesScreen() {
                   <Text style={styles.replyButtonText}>Send Message</Text>
                 </TouchableOpacity>
               )}
-            </TouchableOpacity>
+              {/* Delete Button */}
+              {(user?.role === 'admin' || (item.sender?._id === user?.id) || (item.recipientAgent?._id === user?.id)) && (
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteEnquiry(item._id)}>
+                  <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
           style={styles.enquiriesList}
           showsVerticalScrollIndicator={false}
@@ -314,7 +441,7 @@ export default function EnquiriesScreen() {
         animationType="slide"
         transparent={true}
         visible={replyModalVisible}
-        onRequestClose={() => setReplyModalVisible(false)}
+        onRequestClose={() => {setReplyModalVisible(false); setLoading(false);}}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -323,6 +450,17 @@ export default function EnquiriesScreen() {
               <>
                 <Text style={styles.modalSubTitle}>About: {currentEnquiryToReply.property?.title || 'Property'}</Text>
                 <Text style={styles.modalOriginalMessage}>Conversation with {viewType === 'received' ? currentEnquiryToReply.sender?.name : currentEnquiryToReply.recipientAgent?.name || 'Agent'}</Text>
+                <RNScrollView ref={modalConversationScrollRef} style={styles.modalConversationScroll}>
+                    {currentEnquiryToReply.conversation?.map((msg, msgIdx) => (
+                        <View key={msgIdx} style={[styles.messageBubble, msg.senderId === user?.id ? styles.myMessage : styles.otherMessage]}>
+                            <Text style={styles.messageSender}>
+                                {msg.senderId === user?.id ? 'You' : (msg.senderId?.name || (currentEnquiryToReply.recipientAgent?._id === msg.senderId ? currentEnquiryToReply.recipientAgent?.name : currentEnquiryToReply.sender?.name || 'User'))}:
+                            </Text>
+                            <Text style={styles.messageText}>{msg.message}</Text>
+                            <Text style={styles.messageTimestamp}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                        </View>
+                    ))}
+                </RNScrollView>
               </>
             )}
             <TextInput
@@ -333,9 +471,9 @@ export default function EnquiriesScreen() {
               onChangeText={setReplyMessage}
               maxLength={500}
             />
-            <Text style={styles.modalCharCount}>{replyMessage.length}/500}</Text>
+            <Text style={styles.modalCharCount}>{replyMessage.length}/500</Text>
             <View style={styles.modalButtonContainer}>
-              <Button title="Cancel" onPress={() => {setReplyModalVisible(false); setReplyMessage(''); setCurrentEnquiryToReply(null);}} color="#dc3545" />
+              <Button title="Cancel" onPress={() => {setReplyModalVisible(false); setReplyMessage(''); setCurrentEnquiryToReply(null); setLoading(false);}} color="#dc3545" />
               <Button title="Send Message" onPress={handleReplySubmission} color="#00c3a5" disabled={loading} />
             </View>
             {loading && <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 10 }} />}
@@ -427,8 +565,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 3,
     elevation: 2,
+    position: 'relative', // Crucial for absolute positioning of arrows
   },
-  enquiryCardHeader: {
+  enquiryCardHeaderTouchable: { // TouchableOpacity wrapping the header part for collapse/expand
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
@@ -477,10 +616,27 @@ const styles = StyleSheet.create({
   },
   // NEW STYLES for conversation thread
   conversationContainer: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 10,
+    paddingTop: 5,
+  },
+  collapsedContent: {
+    maxHeight: 0,
+    overflow: 'hidden',
+  },
+  expandedContent: {
+    maxHeight: 500, // Sufficiently large for conversations to scroll
+    overflow: 'visible',
+  },
+  conversationScrollArea: { // This is the new style for the RNScrollView itself
+    maxHeight: 150, // KEY FOR SCROLLING WITHIN THE CARD
+    minHeight: 50, // Ensures it has some height even with few messages
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: '#fafafa',
+    marginTop: 5,
+    marginBottom: 10,
   },
   messageBubble: {
     padding: 8,
@@ -516,45 +672,30 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 2,
   },
-  replySection: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 10,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 10,
+  arrowOverlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 5,
+    paddingVertical: 5,
   },
-  replyLabel: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#002f3d',
-    marginBottom: 5,
+  scrollArrow: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 20,
+    padding: 4,
+    elevation: 4,
+    alignSelf: 'flex-end',
   },
-  replyMessage: {
-    fontSize: 15,
-    color: '#444',
-    lineHeight: 20,
+  scrollArrowUp: {
+    // These styles are handled by arrowOverlayContainer and alignSelf
   },
-  replyDate: {
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'right',
-    marginTop: 5,
-  },
-  enquirySender: {
-    fontSize: 13,
-    color: '#007bff',
-    fontWeight: 'bold',
-    textAlign: 'right',
-    marginTop: 10,
-  },
-  enquiryRecipient: {
-    fontSize: 13,
-    color: '#007bff',
-    fontWeight: 'bold',
-    textAlign: 'right',
-    marginTop: 10,
+  scrollArrowDown: {
+    // These styles are handled by arrowOverlayContainer and alignSelf
   },
   replyButton: {
     backgroundColor: '#007bff',
@@ -569,7 +710,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  // Reused carousel styles (if PropertyImageCarousel is here)
   carouselWrapper: {
     position: 'relative',
   },
@@ -608,7 +748,6 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 5,
   },
-  // Styles for Reply Modal (reused from PropertyDetailsScreen)
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -674,5 +813,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginTop: 10,
+  },
+  modalConversationScroll: {
+    maxHeight: screenHeight * 0.3,
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderRadius: 8,
+    paddingHorizontal: 5,
   },
 });

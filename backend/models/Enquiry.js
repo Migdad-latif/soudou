@@ -1,5 +1,22 @@
 const mongoose = require('mongoose');
 
+const ConversationSchema = new mongoose.Schema({
+  senderId: { // ID of the specific sender of this message (can be original sender or agent)
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  message: {
+    type: String,
+    required: [true, 'Message cannot be empty'],
+    maxlength: [500, 'Message cannot be more than 500 characters'],
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 const EnquirySchema = new mongoose.Schema({
   property: {
     type: mongoose.Schema.ObjectId,
@@ -16,35 +33,25 @@ const EnquirySchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Enquiry must have a recipient agent'],
   },
-  // --- MODIFIED: conversation array instead of single message/replyMessage ---
-  conversation: [ // Array to store messages in the thread
-    {
-      senderId: { // ID of the specific sender of this message (can be original sender or agent)
-        type: mongoose.Schema.ObjectId,
-        ref: 'User',
-        required: true,
-      },
-      message: {
-        type: String,
-        required: [true, 'Message cannot be empty'],
-        maxlength: [500, 'Message cannot be more than 500 characters'],
-      },
-      timestamp: {
-        type: Date,
-        default: Date.now,
-      },
-    },
-  ],
-  // --- END MODIFIED ---
-  status: { // e.g., 'open', 'read', 'closed', 'new_message_from_agent', 'new_message_from_user'
+  conversation: [ConversationSchema], // Array to store messages in the thread
+  status: { // e.g., 'open', 'read', 'replied', 'closed'
     type: String,
-    enum: ['open', 'read', 'replied', 'closed'], // Simplified for now, can be expanded
-    default: 'open', // Initial status
+    enum: ['open', 'read', 'replied', 'closed'],
+    default: 'open', // Initial status for a new conversation
   },
   createdAt: {
     type: Date,
     default: Date.now,
   },
+  repliedAt: { // Timestamp for when the enquiry was last replied to
+    type: Date,
+  },
+
+  deletedFor: {
+  sender: { type: Boolean, default: false },
+  agent: { type: Boolean, default: false }
+},
+
 });
 
 module.exports = mongoose.model('Enquiry', EnquirySchema);
