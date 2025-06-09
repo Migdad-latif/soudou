@@ -6,7 +6,7 @@ const asyncHandler = require('express-async-handler');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 // @route   GET /api/properties
-// @desc    Get all properties with optional filters and keyword search
+// @desc    Get all properties with optional filters and keyword search (already implemented)
 // @access  Public
 router.get('/', asyncHandler(async (req, res) => {
   const query = {};
@@ -14,14 +14,8 @@ router.get('/', asyncHandler(async (req, res) => {
   if (req.query.keyword) {
     const keyword = req.query.keyword;
     query.$or = [
-      { title: { $regex: keyword,
-          $options: 'i'
-        }
-      },
-      { description: { $regex: keyword,
-          $options: 'i'
-        }
-      },
+      { title: { $regex: keyword, $options: 'i' } },
+      { description: { $regex: keyword, $options: 'i' } },
       { location: { $regex: keyword, $options: 'i' } }
     ];
   }
@@ -29,11 +23,11 @@ router.get('/', asyncHandler(async (req, res) => {
   if (req.query.propertyType) query.propertyType = { $in: req.query.propertyType.split(',') };
   if (req.query.bedrooms || req.query.bedroomsMin || req.query.maxBedrooms) {
       if (req.query.bedrooms) query.bedrooms = Number(req.query.bedrooms);
-      else { if (req.query.bedroomsMin) query.bedrooms.$gte = Number(req.query.bedroomsMin); if (req.query.maxBedrooms) query.bedrooms.$lte = Number(req.query.maxBedrooms); }
+      else { query.bedrooms = {}; if (req.query.bedroomsMin) query.bedrooms.$gte = Number(req.query.bedroomsMin); if (req.query.maxBedrooms) query.bedrooms.$lte = Number(req.query.maxBedrooms); }
   }
   if (req.query.bathrooms || req.query.bathroomsMin || req.query.maxBathrooms) {
           if (req.query.bathrooms) query.bathrooms = Number(req.query.bathrooms);
-          else { if (req.query.bathroomsMin) query.bathrooms.$gte = Number(req.query.bathroomsMin); if (req.query.maxBathrooms) query.bathrooms.$lte = Number(req.query.maxBathrooms); }
+          else { query.bathrooms = {}; if (req.query.bathroomsMin) query.bathrooms.$gte = Number(req.query.bathroomsMin); if (req.query.maxBathrooms) query.bathrooms.$lte = Number(req.query.maxBathrooms); }
       }
   if (req.query.priceMin || req.query.maxPrice) {
     query.price = {};
@@ -49,7 +43,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // @route   POST /api/properties
-// @desc    Add a new property
+// @desc    Add a new property (already implemented)
 // @access  Private (protected by JWT middleware)
 router.post('/', protect, asyncHandler(async (req, res) => {
   const {
@@ -61,7 +55,6 @@ router.post('/', protect, asyncHandler(async (req, res) => {
 
   if (coordinates && coordinates.type === 'Point' && coordinates.coordinates && coordinates.coordinates.length === 2) {
       propertyCoordinates = coordinates;
-      console.log("DEBUG (Geocoding): Using coordinates provided by frontend (GPS).");
   } else {
       const locationToGeocode = location.includes('Guinea') ? location : `${location}, Guinea`;
       const loc = await geocoder.geocode(locationToGeocode);
@@ -82,7 +75,7 @@ router.post('/', protect, asyncHandler(async (req, res) => {
 
 
 // @route   PUT /api/properties/:id
-// @desc    Update a property
+// @desc    Update a property (already implemented)
 // @access  Private (owner only)
 router.put('/:id', protect, asyncHandler(async (req, res) => {
   const {
@@ -136,7 +129,7 @@ router.put('/:id', protect, asyncHandler(async (req, res) => {
 // @route   GET /api/properties/myproperties
 // @desc    Get properties added by the logged-in agent
 // @access  Private (agent only)
-router.get('/myproperties', protect, authorize('agent'), asyncHandler(async (req, res) => { // <-- THIS ROUTE MUST BE ABOVE /:id
+router.get('/myproperties', protect, authorize('agent'), asyncHandler(async (req, res) => {
   const agentProperties = await Property.find({ agent: req.user.id });
 
   res.status(200).json({
@@ -149,8 +142,11 @@ router.get('/myproperties', protect, authorize('agent'), asyncHandler(async (req
 // @route   GET /api/properties/:id
 // @desc    Get single property by ID
 // @access  Public
-router.get('/:id', asyncHandler(async (req, res) => { // <-- THIS ROUTE MUST BE BELOW /myproperties
-  const property = await Property.findById(req.params.id);
+router.get('/:id', asyncHandler(async (req, res) => { // Use asyncHandler
+  // --- NEW: Populate the 'agent' field to get agent's details ---
+  const property = await Property.findById(req.params.id).populate('agent', 'phoneNumber'); // Populate 'agent' and select 'phoneNumber'
+  // --- END NEW ---
+
   if (!property) { res.status(404); throw new Error('Property not found'); }
   res.status(200).json({ success: true, data: property });
 }));

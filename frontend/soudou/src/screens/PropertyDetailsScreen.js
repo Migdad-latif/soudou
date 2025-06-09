@@ -1,29 +1,29 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal, Linking } from 'react-native'; // <-- Ensure Button is here
 import axios from 'axios';
 import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
-import { useAuth } from '../context/AuthContext'; // Import useAuth context
+import { useAuth } from '../context/AuthContext';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
 
 // IMPORTANT: Make sure this is your correct local IP address and port
 const API_URL = 'http://192.168.1.214:3000/api/properties';
-const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 
 export default function PropertyDetailsScreen() {
   const route = useRoute();
   const { propertyId } = route.params;
-  const { user, token } = useAuth(); // Access user and token from AuthContext
+  const { user, token } = useAuth();
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
-  const [isPropertySaved, setIsPropertySaved] = useState(false); // NEW: State for saved status
+  const [isPropertySaved, setIsPropertySaved] = useState(false);
 
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
@@ -32,8 +32,8 @@ export default function PropertyDetailsScreen() {
   const defaultRegion = {
     latitude: 9.5098, // Center of Conakry
     longitude: -13.7123, // Center of Conakry
-    latitudeDelta: 0.0922, // Zoom level
-    longitudeDelta: 0.0421, // Zoom level
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
   };
 
 
@@ -47,11 +47,12 @@ export default function PropertyDetailsScreen() {
           throw new Error('Property ID is missing or undefined.');
         }
 
+        // Backend now populates agent data with phone number
         const response = await axios.get(`${API_URL}/${propertyId}`);
-        setProperty(response.data.data);
-        setCurrentIndex(0); // reset index on property load
+        setProperty(response.data.data); // Property will now have populated agent data
+        setCurrentIndex(0);
 
-        // --- NEW: Check if property is saved by current user ---
+        // Check if property is saved by current user
         if (user && token) {
           try {
             const headers = { 'Authorization': `Bearer ${token}` };
@@ -63,7 +64,6 @@ export default function PropertyDetailsScreen() {
             setIsPropertySaved(false); // Assume not saved on error
           }
         }
-        // --- END NEW ---
 
       } catch (err) {
         console.error('Error fetching property details:', err);
@@ -82,7 +82,7 @@ export default function PropertyDetailsScreen() {
   }, [propertyId, user, token]); // Add user and token as dependencies to re-check saved status on login/logout
 
 
-  // --- NEW: Toggle Save Property Function ---
+  // Toggle Save Property Function
   const handleToggleSave = async () => {
     if (!user || !token) {
       alert('Please log in to save properties.');
@@ -106,7 +106,27 @@ export default function PropertyDetailsScreen() {
       alert('Failed to save/unsave property. Please try again.');
     }
   };
-  // --- END NEW: Toggle Save Property Function ---
+
+
+  // --- NEW: Call and Text Agent Functions ---
+  const handleCallAgent = () => {
+    // Check if property and agent object with phoneNumber exist
+    if (property?.agent?.phoneNumber) {
+      Linking.openURL(`tel:${property.agent.phoneNumber}`);
+    } else {
+      Alert.alert('Error', 'Agent phone number not available.');
+    }
+  };
+
+  const handleTextAgent = () => {
+    // Check if property and agent object with phoneNumber exist
+    if (property?.agent?.phoneNumber) {
+      Linking.openURL(`sms:${property.agent.phoneNumber}`);
+    } else {
+      Alert.alert('Error', 'Agent phone number not available.');
+    }
+  };
+  // --- END NEW: Call and Text Agent Functions ---
 
 
   // Scroll FlatList to index
@@ -292,12 +312,13 @@ export default function PropertyDetailsScreen() {
           </View>
 
           <View style={styles.contactButtons}>
-              <Button title="Call Agent" onPress={() => console.log('Call agent')} color="#007bff" />
-              <Button title="Email Agent" onPress={() => console.log('Email agent')} color="#00c3a5" />
+              {/* Ensure Button is imported from react-native */}
+              <Button title="Call Agent" onPress={handleCallAgent} color="#007bff" />
+              <Button title="Text Agent" onPress={handleTextAgent} color="#00c3a5" />
           </View>
 
-          {/* NEW: Save/Unsave Heart Icon */}
-          {user && ( // Only show if user is logged in
+          {/* Save/Unsave Heart Icon */}
+          {user && (
             <TouchableOpacity
               style={styles.saveIcon}
               onPress={handleToggleSave}
@@ -305,7 +326,7 @@ export default function PropertyDetailsScreen() {
               <Ionicons
                 name={isPropertySaved ? 'heart' : 'heart-outline'}
                 size={28}
-                color={isPropertySaved ? '#dc3545' : '#888'} // Red if saved, grey if not
+                color={isPropertySaved ? '#dc3545' : '#888'}
               />
             </TouchableOpacity>
           )}

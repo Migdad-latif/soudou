@@ -443,15 +443,15 @@ const styles = StyleSheet.create({
   },
   arrowButton: {
     position: 'absolute',
-    top: '40%', // Adjusted for vertical centering
+    top: '40%',
     zIndex: 10,
     padding: 5,
   },
   leftArrow: {
-    left: 6,
+    left: 5,
   },
   rightArrow: {
-    right: 6,
+    right: 5,
   },
 
   noCardImageIcon: {
@@ -490,6 +490,7 @@ const styles = StyleSheet.create({
   cardInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: 8,
   },
   cardInfoText: {
     fontSize: 13,
