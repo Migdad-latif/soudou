@@ -8,15 +8,15 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  Dimensions,
+  Dimensions, // <-- Ensure Dimensions is here
 } from 'react-native';
 import axios from 'axios';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../context/AuthContext'; // Import useAuth context
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
-const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const screenWidth = Dimensions.get('window').width;
 
 const PropertyImageCarousel = ({ photos }) => {
@@ -37,7 +37,7 @@ const PropertyImageCarousel = ({ photos }) => {
   const onScroll = useCallback(
     (event) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for SavedScreen card width
+      const newIndex = Math.round(offsetX / (screenWidth - 24));
       if (newIndex !== currentIndex) {
         setCurrentIndex(newIndex);
       }
@@ -68,7 +68,6 @@ const PropertyImageCarousel = ({ photos }) => {
         })}
       />
 
-      {/* Arrows always visible in provided code */}
       <TouchableOpacity style={[styles.arrowButton, styles.leftArrow]} onPress={() => onArrowPress(-1)} activeOpacity={0.7}>
         <Ionicons name="chevron-back-circle" size={36} color="rgba(0,0,0,0.5)" />
       </TouchableOpacity>
@@ -84,21 +83,20 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const isFocused = useIsFocused();
-  const { user, token } = useAuth(); // Access user and token from AuthContext
+  const { user, token } = useAuth();
 
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({ listingType: 'For Sale' });
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [savedPropertyIds, setSavedPropertyIds] = useState(new Set()); // NEW: Track saved property IDs
+  const [savedPropertyIds, setSavedPropertyIds] = useState(new Set());
 
 
-  // --- NEW: Fetch saved properties on user/token change or screen focus ---
   useEffect(() => {
     const fetchSavedProperties = async () => {
       if (!user || !token) {
-        setSavedPropertyIds(new Set()); // Clear saved if not logged in
+        setSavedPropertyIds(new Set());
         return;
       }
       try {
@@ -111,14 +109,14 @@ export default function HomeScreen() {
       }
     };
 
-    if (isFocused) { // Fetch when screen focused
+    if (isFocused) {
       fetchSavedProperties();
     }
-  }, [isFocused, user, token]); // Dependencies
+  }, [isFocused, user, token]);
 
 
   useEffect(() => {
-    if (!isFocused) return; // Prevent re-fetching when not focused
+    if (!isFocused) return;
 
     if (route.params?.appliedFilters) {
       const { appliedFilters } = route.params;
@@ -191,7 +189,6 @@ export default function HomeScreen() {
     navigation.navigate('PropertyDetails', { propertyId });
   };
 
-  // --- NEW: Toggle Save Property Function ---
   const handleToggleSave = async (propertyId) => {
     if (!user || !token) {
       alert('Please log in to save properties.');
@@ -201,7 +198,7 @@ export default function HomeScreen() {
 
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
-      const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers }); // Empty body for POST
+      const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers });
 
       if (response.data.action === 'saved') {
         setSavedPropertyIds((prev) => new Set(prev).add(propertyId));
@@ -219,7 +216,6 @@ export default function HomeScreen() {
       alert('Failed to save/unsave property. Please try again.');
     }
   };
-  // --- END NEW: Toggle Save Property Function ---
 
 
   if (loading) {
@@ -324,8 +320,8 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* NEW: Save/Unsave Heart Icon */}
-              {user && ( // Only show if user is logged in
+              {/* Save/Unsave Heart Icon */}
+              {user && (
                 <TouchableOpacity
                   style={styles.saveIcon}
                   onPress={() => handleToggleSave(item._id)}
@@ -333,7 +329,7 @@ export default function HomeScreen() {
                   <Ionicons
                     name={savedPropertyIds.has(item._id) ? 'heart' : 'heart-outline'}
                     size={28}
-                    color={savedPropertyIds.has(item._id) ? '#dc3545' : '#888'} // Red if saved, grey if not
+                    color={savedPropertyIds.has(item._id) ? '#dc3545' : '#888'}
                   />
                 </TouchableOpacity>
               )}
@@ -346,21 +342,21 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' }, // Light background
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f5f5f5' }, // Light background
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f5f5f5' },
   errorText: { color: 'red', fontWeight: 'bold' },
 
   headerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: '#fff', // Light background
+    backgroundColor: '#fff',
   },
   headerLogo: { width: 45, height: 45, marginRight: 8 },
   appHeader: {
     fontWeight: 'bold',
     fontSize: 22,
-    color: '#002f3d', // Rightmove dark blue
+    color: '#002f3d',
     marginLeft: 10,
   },
 
@@ -370,16 +366,16 @@ const styles = StyleSheet.create({
     margin: 12,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#ccc', // Lighter border
+    borderColor: '#ccc',
     borderRadius: 12,
-    backgroundColor: '#fff', // Light background
+    backgroundColor: '#fff',
   },
-  searchIcon: { marginRight: 8, color: '#333' }, // Dark text
+  searchIcon: { marginRight: 8, color: '#333' },
   searchInput: {
     flex: 1,
     fontSize: 16,
     paddingVertical: 8,
-    color: '#000', // Dark text
+    color: '#000',
   },
   filterButton: {
     marginLeft: 10,
@@ -395,21 +391,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#ccc', // Lighter border
+    borderColor: '#ccc',
     marginHorizontal: 6,
-    backgroundColor: '#f5f5f5', // Light background
+    backgroundColor: '#f5f5f5',
   },
   activeToggleButton: {
-    backgroundColor: '#00c3a5', // Rightmove green
+    backgroundColor: '#00c3a5',
     borderColor: '#00c3a5',
   },
   toggleButtonText: {
     fontWeight: '600',
     fontSize: 14,
-    color: '#444', // Dark text
+    color: '#444',
   },
   activeToggleButtonText: {
-    color: '#fff', // White text
+    color: '#fff',
   },
 
   listContent: {
@@ -419,18 +415,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginBottom: 16,
     borderRadius: 12,
-    backgroundColor: '#fff', // Light card background
+    backgroundColor: '#fff',
     shadowColor: '#aaa',
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 4,
-    position: 'relative', // Needed for absolute positioning of save icon
+    position: 'relative',
+    overflow: 'hidden',
   },
   carouselWrapper: {
     position: 'relative',
   },
   carouselContainer: {
-    width: screenWidth - 24, // Adjusted for card's marginHorizontal * 2
+    width: screenWidth - 24,
     height: 180,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
@@ -438,7 +435,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   carouselImage: {
-    width: screenWidth - 24, // Match carouselContainer width
+    width: screenWidth - 24,
     height: 180,
   },
   arrowButton: {
@@ -448,17 +445,17 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   leftArrow: {
-    left: 5,
+    left: 6,
   },
   rightArrow: {
-    right: 5,
+    right: 6,
   },
 
   noCardImageIcon: {
     height: 180,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#eee', // Lighter placeholder background
+    backgroundColor: '#eee',
     borderRadius: 10,
   },
   cardContent: {
@@ -468,33 +465,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 2,
-    color: '#222', // Dark text
+    color: '#222',
   },
   cardLocation: {
     fontSize: 14,
-    color: '#666', // Darker grey text
+    color: '#666',
     marginBottom: 6,
   },
   cardPrice: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
-    color: '#007AFF', // Rightmove blue accent
+    color: '#007AFF',
   },
   cardPropertyType: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
-    color: '#007AFF', // Rightmove blue accent
+    color: '#007AFF',
   },
   cardInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
   },
   cardInfoText: {
     fontSize: 13,
-    color: '#555', // Grey text
+    color: '#555',
   },
   cardActionRow: {
     flexDirection: 'row',
@@ -502,13 +498,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cardButton: {
-    backgroundColor: '#007AFF', // Rightmove blue accent
+    backgroundColor: '#007AFF',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   cardButtonText: {
-    color: '#fff', // White text
+    color: '#fff',
     fontWeight: 'bold',
   },
   saveIcon: {
@@ -516,7 +512,7 @@ const styles = StyleSheet.create({
     top: 10,
     right: 10,
     zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.7)', // Slightly transparent white background
+    backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 20,
     padding: 5,
   },

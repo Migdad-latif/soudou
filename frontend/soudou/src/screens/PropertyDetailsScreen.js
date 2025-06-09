@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal, Linking } from 'react-native'; // <-- Ensure Button is here
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal, Linking, TextInput, Alert } from 'react-native';
 import axios from 'axios';
 import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +12,13 @@ const screenHeight = Dimensions.get('window').height;
 // IMPORTANT: Make sure this is your correct local IP address and port
 const API_URL = 'http://192.168.1.214:3000/api/properties';
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
+const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`; // Enquiries API endpoint
+
 
 export default function PropertyDetailsScreen() {
   const route = useRoute();
   const { propertyId } = route.params;
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,8 @@ export default function PropertyDetailsScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [isPropertySaved, setIsPropertySaved] = useState(false);
+  const [enquiryModalVisible, setEnquiryModalVisible] = useState(false); // NEW: State for enquiry modal
+  const [enquiryMessage, setEnquiryMessage] = useState(''); // NEW: State for enquiry message
 
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
@@ -47,12 +51,10 @@ export default function PropertyDetailsScreen() {
           throw new Error('Property ID is missing or undefined.');
         }
 
-        // Backend now populates agent data with phone number
         const response = await axios.get(`${API_URL}/${propertyId}`);
-        setProperty(response.data.data); // Property will now have populated agent data
+        setProperty(response.data.data);
         setCurrentIndex(0);
 
-        // Check if property is saved by current user
         if (user && token) {
           try {
             const headers = { 'Authorization': `Bearer ${token}` };
@@ -61,7 +63,7 @@ export default function PropertyDetailsScreen() {
             setIsPropertySaved(savedIds.has(propertyId));
           } catch (savedErr) {
             console.error("Error checking if property is saved:", savedErr);
-            setIsPropertySaved(false); // Assume not saved on error
+            setIsPropertySaved(false);
           }
         }
 
@@ -79,13 +81,12 @@ export default function PropertyDetailsScreen() {
       setError('No property ID provided. Please return to Home and try again.');
       setLoading(false);
     }
-  }, [propertyId, user, token]); // Add user and token as dependencies to re-check saved status on login/logout
+  }, [propertyId, user, token]);
 
 
-  // Toggle Save Property Function
   const handleToggleSave = async () => {
     if (!user || !token) {
-      alert('Please log in to save properties.');
+      Alert.alert('Authentication Required', 'Please log in to save properties.');
       navigation.navigate('AccountTab', { screen: 'Login' });
       return;
     }
@@ -96,21 +97,19 @@ export default function PropertyDetailsScreen() {
 
       if (response.data.action === 'saved') {
         setIsPropertySaved(true);
-        alert('Property saved!');
+        Alert.alert('Success', 'Property saved!');
       } else {
         setIsPropertySaved(false);
-        alert('Property unsaved!');
+        Alert.alert('Success', 'Property unsaved!');
       }
     } catch (err) {
       console.error("Error toggling save property:", err);
-      alert('Failed to save/unsave property. Please try again.');
+      Alert.alert('Error', 'Failed to save/unsave property. Please try again.');
     }
   };
 
 
-  // --- NEW: Call and Text Agent Functions ---
   const handleCallAgent = () => {
-    // Check if property and agent object with phoneNumber exist
     if (property?.agent?.phoneNumber) {
       Linking.openURL(`tel:${property.agent.phoneNumber}`);
     } else {
@@ -119,14 +118,51 @@ export default function PropertyDetailsScreen() {
   };
 
   const handleTextAgent = () => {
-    // Check if property and agent object with phoneNumber exist
     if (property?.agent?.phoneNumber) {
       Linking.openURL(`sms:${property.agent.phoneNumber}`);
     } else {
       Alert.alert('Error', 'Agent phone number not available.');
     }
   };
-  // --- END NEW: Call and Text Agent Functions ---
+
+
+  // --- NEW: Handle Send Enquiry ---
+  const handleSendEnquiry = async () => {
+    if (!user || !token) {
+      Alert.alert('Authentication Required', 'Please log in to send an enquiry.');
+      setEnquiryModalVisible(false); // Close modal if not logged in
+      navigation.navigate('AccountTab', { screen: 'Login' });
+      return;
+    }
+
+    if (!enquiryMessage.trim()) {
+      Alert.alert('Missing Message', 'Please type your enquiry message.');
+      return;
+    }
+
+    setLoading(true); // Show global loading for enquiry submission
+    try {
+      const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+      const response = await axios.post(ENQUIRIES_API_URL, {
+        propertyId: propertyId,
+        message: enquiryMessage,
+      }, { headers });
+
+      if (response.status === 201) {
+        Alert.alert('Success', 'Your enquiry has been sent to the agent!');
+        setEnquiryMessage(''); // Clear message
+        setEnquiryModalVisible(false); // Close modal
+      } else {
+        Alert.alert('Error', `Failed to send enquiry: ${response.data?.error || 'Please try again.'}`);
+      }
+    } catch (err) {
+      console.error("Error sending enquiry:", err);
+      Alert.alert('Error', 'Failed to send enquiry. Please check your network.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  // --- END NEW: Handle Send Enquiry ---
 
 
   // Scroll FlatList to index
@@ -194,9 +230,9 @@ export default function PropertyDetailsScreen() {
   // Determine the map region based on actual coordinates or fallback to default
   const mapRegion = property.coordinates && property.coordinates.coordinates && property.coordinates.coordinates.length === 2
     ? {
-        latitude: property.coordinates.coordinates[1], // Latitude is the second element
-        longitude: property.coordinates.coordinates[0], // Longitude is the first element
-        latitudeDelta: 0.005, // Zoom level - make it tighter for individual properties
+        latitude: property.coordinates.coordinates[1],
+        longitude: property.coordinates.coordinates[0],
+        latitudeDelta: 0.005,
         longitudeDelta: 0.005,
       }
     : defaultRegion;
@@ -312,13 +348,19 @@ export default function PropertyDetailsScreen() {
           </View>
 
           <View style={styles.contactButtons}>
-              {/* Ensure Button is imported from react-native */}
               <Button title="Call Agent" onPress={handleCallAgent} color="#007bff" />
               <Button title="Text Agent" onPress={handleTextAgent} color="#00c3a5" />
           </View>
+          {/* NEW: Enquire Button */}
+          {user && ( // Only show if user is logged in
+            <TouchableOpacity style={styles.enquireButton} onPress={() => setEnquiryModalVisible(true)}>
+              <Text style={styles.enquireButtonText}>Send Enquiry</Text>
+            </TouchableOpacity>
+          )}
+
 
           {/* Save/Unsave Heart Icon */}
-          {user && (
+          {user && ( // Only show if user is logged in
             <TouchableOpacity
               style={styles.saveIcon}
               onPress={handleToggleSave}
@@ -368,6 +410,35 @@ export default function PropertyDetailsScreen() {
           {currentIndex < property.photos.length - 1 && renderArrow('right', () => scrollToIndex(currentIndex + 1, fullscreenRef))}
         </View>
       </Modal>
+
+      {/* NEW: Enquiry Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={enquiryModalVisible}
+        onRequestClose={() => setEnquiryModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Enquire about this property</Text>
+            <TextInput
+              style={styles.modalTextInput}
+              multiline
+              placeholder="Type your message here..."
+              value={enquiryMessage}
+              onChangeText={setEnquiryMessage}
+              maxLength={500}
+            />
+            <Text style={styles.modalCharCount}>{enquiryMessage.length}/500</Text>
+            <View style={styles.modalButtonContainer}>
+              <Button title="Cancel" onPress={() => setEnquiryModalVisible(false)} color="#dc3545" />
+              <Button title="Send Enquiry" onPress={handleSendEnquiry} color="#00c3a5" disabled={loading} />
+            </View>
+            {loading && <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 10 }} />}
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -473,6 +544,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     marginTop: 20,
   },
+  enquireButton: {
+    backgroundColor: '#00c3a5', // Rightmove green
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  enquireButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   arrowButton: {
     position: 'absolute',
     top: '40%',
@@ -519,5 +602,51 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 20,
     padding: 5,
+  },
+  modalOverlay: { // Styles for the enquiry modal
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    width: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#333',
+    textAlign: 'center',
+  },
+  modalTextInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 10,
+  },
+  modalCharCount: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'right',
+    marginBottom: 15,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 10,
   },
 });

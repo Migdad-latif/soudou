@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 const properties = require('./routes/properties');
 const auth = require('./routes/auth');
 const uploads = require('./routes/uploads');
+const enquiries = require('./routes/enquiries'); // <-- ENSURE THIS IMPORT IS HERE
 
 // --- MongoDB Connection ---
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -25,25 +26,25 @@ mongoose.connect(MONGODB_URI)
 // --- End MongoDB Connection ---
 
 // Middleware: Process incoming requests
-app.use(express.json());
+app.use(express.json()); // Essential for parsing JSON bodies
 
 // Basic Route to confirm server is alive
 app.get('/', (req, res) => {
   res.send('Welcome to the Soudou Backend API!');
 });
 
-// --- Simple POST endpoint for frontend connectivity test (keep for now) ---
+// Simple POST endpoint for frontend connectivity test (keep for now)
 app.post('/test-frontend-post', (req, res) => {
   console.log('DEBUG: Received POST request to /test-frontend-post');
   console.log('DEBUG: Request Body:', req.body);
   res.status(200).json({ success: true, message: 'Simple POST received by backend!', data: req.body });
 });
-// --- END Simple POST endpoint ---
 
 // Mount routers
 app.use('/api/properties', properties);
 app.use('/api/auth', auth);
 app.use('/api/uploads', uploads);
+app.use('/api/enquiries', enquiries); // <-- ENSURE THIS MOUNTING IS HERE
 
 // --- GLOBAL ERROR HANDLING MIDDLEWARE (MUST BE LAST) ---
 app.use((err, req, res, next) => {
