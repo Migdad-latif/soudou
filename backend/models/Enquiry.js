@@ -6,25 +6,40 @@ const EnquirySchema = new mongoose.Schema({
     ref: 'Property',
     required: [true, 'Enquiry must be linked to a property'],
   },
-  sender: { // The user who sent the enquiry
+  sender: { // The user who initiated the enquiry
     type: mongoose.Schema.ObjectId,
     ref: 'User',
     required: [true, 'Enquiry must have a sender'],
   },
-  recipientAgent: { // The agent who owns the property (extracted from property)
+  recipientAgent: { // The agent who owns the property
     type: mongoose.Schema.ObjectId,
     ref: 'User',
     required: [true, 'Enquiry must have a recipient agent'],
   },
-  message: {
+  // --- MODIFIED: conversation array instead of single message/replyMessage ---
+  conversation: [ // Array to store messages in the thread
+    {
+      senderId: { // ID of the specific sender of this message (can be original sender or agent)
+        type: mongoose.Schema.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+      message: {
+        type: String,
+        required: [true, 'Message cannot be empty'],
+        maxlength: [500, 'Message cannot be more than 500 characters'],
+      },
+      timestamp: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+  ],
+  // --- END MODIFIED ---
+  status: { // e.g., 'open', 'read', 'closed', 'new_message_from_agent', 'new_message_from_user'
     type: String,
-    required: [true, 'Enquiry message cannot be empty'],
-    maxlength: [500, 'Message cannot be more than 500 characters'],
-  },
-  status: { // e.g., 'sent', 'read', 'replied'
-    type: String,
-    enum: ['sent', 'read', 'replied'],
-    default: 'sent',
+    enum: ['open', 'read', 'replied', 'closed'], // Simplified for now, can be expanded
+    default: 'open', // Initial status
   },
   createdAt: {
     type: Date,
