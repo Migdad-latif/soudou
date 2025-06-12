@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  Dimensions, // <-- Ensure Dimensions is here
+  Dimensions,
 } from 'react-native';
 import axios from 'axios';
 import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
-const API_BASE_URL = 'http://192.168.1.214:3000/api';
+const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
 const screenWidth = Dimensions.get('window').width;
 
 const PropertyImageCarousel = ({ photos }) => {
@@ -37,7 +37,7 @@ const PropertyImageCarousel = ({ photos }) => {
   const onScroll = useCallback(
     (event) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      const newIndex = Math.round(offsetX / (screenWidth - 24));
+      const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for SavedScreen card width
       if (newIndex !== currentIndex) {
         setCurrentIndex(newIndex);
       }
@@ -53,7 +53,7 @@ const PropertyImageCarousel = ({ photos }) => {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         data={photos}
-        keyExtractor={(photo, index) => `${photo}-${index}`}
+        keyExtractor={(photo, index) => `${photo}-${index}`} // FIX: Ensure this line is correct
         renderItem={({ item }) => (
           <Image source={{ uri: item }} style={styles.carouselImage} resizeMode="cover" />
         )}
@@ -132,7 +132,7 @@ export default function HomeScreen() {
   }, [isFocused, route.params, navigation, filters.listingType]);
 
   useEffect(() => {
-    if (Object.keys(filters).length === 0) return;
+    if (Object.keys(filters).length === 0 && !user) return;
 
     const fetchProperties = async () => {
       setLoading(true);
@@ -150,7 +150,12 @@ export default function HomeScreen() {
         }
         if (filters.keyword) params.keyword = filters.keyword;
 
-        console.log('Fetching with params:', params);
+        // NEW LOGIC: Filter by agent if an agent is logged in
+        if (user && user.role === 'agent') {
+          params.agent = user.id; // Assuming your backend's /api/properties endpoint supports an 'agent' filter
+        }
+
+        console.log('Fetching properties with params:', params);
 
         const response = await axios.get(API_URL, { params });
         setProperties(response.data.data);
@@ -163,7 +168,8 @@ export default function HomeScreen() {
     };
 
     fetchProperties();
-  }, [filters]);
+  }, [filters, user]);
+
 
   const handleFilterNavigation = () => {
     navigation.navigate('Filters', {
