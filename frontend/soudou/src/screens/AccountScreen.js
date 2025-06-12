@@ -1,36 +1,113 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  TextInput,
+  Button,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 
-// Card width for all cards
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const CARD_WIDTH = '92%';
 
-// SectionCard component for APP SETTINGS, SUPPORT, LEGAL
-function SectionCard({ header, children }) {
+// ProfileCard: user can update personal details (now opens a modal)
+function ProfileCard({ user, setUser }) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editName, setEditName] = useState(user?.name || '');
+  const [editEmail, setEditEmail] = useState(user?.email || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleOpenModal = () => {
+    setEditName(user?.name || '');
+    setEditEmail(user?.email || '');
+    setModalVisible(true);
+  };
+
+  // Save handler (calls API and updates context)
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/users/me`,
+        { name: editName, email: editEmail }
+      );
+      setUser(response.data.user); // update context with the returned user
+      setModalVisible(false);
+      alert("Profile updated!");
+    } catch (err) {
+      alert("Failed to update profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionHeader}>{header}</Text>
-      {children}
-    </View>
+    <>
+      <View style={styles.card}>
+        <Text style={styles.cardHeader}>Profile</Text>
+        <Text style={styles.cardLabel}>Name</Text>
+        <Text style={styles.cardValue}>{user?.name || '-'}</Text>
+        <Text style={styles.cardLabel}>Email</Text>
+        <Text style={styles.cardValue}>{user?.email || '-'}</Text>
+        <TouchableOpacity style={styles.editButton} onPress={handleOpenModal}>
+          <Text style={styles.editButtonText}>Edit Profile</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Name"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={editEmail}
+              onChangeText={setEditEmail}
+              placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={styles.modalBtnRow}>
+              <Button title="Cancel" onPress={() => setModalVisible(false)} />
+              <Button title={saving ? "Saving..." : "Save"} onPress={handleSave} disabled={saving} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
-// Welcome card for logged-in user
-function LoggedInCard({ user, onLogout, onAddProperty }) {
+// AccountSettingsCard: change phone, password, delete account
+function AccountSettingsCard({ onChangePhone, onChangePassword, onDeleteAccount }) {
   return (
-    <View style={styles.loggedInCard}>
-      <Text style={styles.loggedInHeader}>Welcome, {user.name}!</Text>
-      <Text style={styles.loggedInText}>Phone: {user.phoneNumber}</Text>
-      {user.email && <Text style={styles.loggedInText}>Email: {user.email}</Text>}
-      <Text style={styles.loggedInText}>Role: {user.role}</Text>
-      {user.role === 'agent' && (
-        <TouchableOpacity style={styles.addPropertyButton} onPress={onAddProperty}>
-          <Text style={styles.addPropertyButtonText}>Add New Property</Text>
-        </TouchableOpacity>
-      )}
-      <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-        <Text style={styles.logoutButtonText}>Log Out</Text>
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>Account Settings</Text>
+      <TouchableOpacity style={styles.optionButton} onPress={onChangePhone}>
+        <Text style={styles.optionText}>Change Phone Number</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.optionButton} onPress={onChangePassword}>
+        <Text style={styles.optionText}>Change Password</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.optionButton, { borderBottomWidth: 0 }]} onPress={onDeleteAccount}>
+        <Text style={[styles.optionText, { color: '#dc3545' }]}>Delete Account</Text>
       </TouchableOpacity>
     </View>
   );
@@ -56,8 +133,12 @@ function SignInCard({ onSignIn, onRegister }) {
 
 export default function AccountScreen() {
   const navigation = useNavigation();
-  const { user, logout, isLoading: authLoading } = useAuth();
+  const { user, setUser, logout, isLoading: authLoading } = useAuth();
 
+  // Handlers for account management
+  const handleChangePhone = () => navigation.navigate('ChangePhone');
+  const handleChangePassword = () => navigation.navigate('ChangePassword');
+  const handleDeleteAccount = () => navigation.navigate('DeleteAccount');
   const handleLogout = async () => {
     const result = await logout();
     if (result.success) {
@@ -65,10 +146,6 @@ export default function AccountScreen() {
     } else {
       alert(result.error);
     }
-  };
-
-  const handleAddPropertyPress = () => {
-    navigation.navigate('HomeTab', { screen: 'AddProperty' });
   };
 
   if (authLoading) {
@@ -80,15 +157,19 @@ export default function AccountScreen() {
     );
   }
 
+  // Render the main content (excluding the log out button)
   const ListHeader = () => (
     <View style={styles.listHeaderContainer}>
       <Text style={styles.header}>Account</Text>
       {user ? (
-        <LoggedInCard
-          user={user}
-          onLogout={handleLogout}
-          onAddProperty={handleAddPropertyPress}
-        />
+        <>
+          <ProfileCard user={user} setUser={setUser} />
+          <AccountSettingsCard
+            onChangePhone={handleChangePhone}
+            onChangePassword={handleChangePassword}
+            onDeleteAccount={handleDeleteAccount}
+          />
+        </>
       ) : (
         <SignInCard
           onSignIn={() => navigation.navigate('Login')}
@@ -96,38 +177,52 @@ export default function AccountScreen() {
         />
       )}
 
-      <SectionCard header="APP SETTINGS">
+      <View style={styles.section}>
+        <Text style={styles.sectionHeader}>APP SETTINGS</Text>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Privacy settings')}>
           <Text style={styles.optionText}>Privacy settings</Text>
         </TouchableOpacity>
-      </SectionCard>
+      </View>
 
-      <SectionCard header="SUPPORT">
+      <View style={styles.section}>
+        <Text style={styles.sectionHeader}>SUPPORT</Text>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Suggest an improvement')}>
           <Text style={styles.optionText}>Suggest an improvement</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('FAQs')}>
           <Text style={styles.optionText}>FAQs</Text>
         </TouchableOpacity>
-      </SectionCard>
+      </View>
 
-      <SectionCard header="LEGAL">
+      <View style={styles.section}>
+        <Text style={styles.sectionHeader}>LEGAL</Text>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Terms of use')}>
           <Text style={styles.optionText}>Terms of use</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Privacy policy')}>
           <Text style={styles.optionText}>Privacy policy</Text>
         </TouchableOpacity>
-      </SectionCard>
+      </View>
 
       <Text style={styles.appVersion}>App version 1.0.0</Text>
     </View>
   );
 
+  // Show the logout button at the very bottom if the user is logged in
+  const ListFooter = () =>
+    user ? (
+      <View style={styles.logoutFooter}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Log Out</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null;
+
   return (
     <FlatList
       ListHeaderComponent={ListHeader}
-      data={[]}
+      ListFooterComponent={ListFooter}
+      data={[]} // No row items, only header and footer content
       keyExtractor={(item) => item._id}
       renderItem={null}
       contentContainerStyle={styles.flatListContentContainer}
@@ -145,7 +240,6 @@ const styles = StyleSheet.create({
   flatListContentContainer: {
     paddingTop: 50,
     paddingBottom: 20,
-    // Do not center align items, left align for consistent card edge
   },
   listHeaderContainer: {
     width: '100%',
@@ -168,7 +262,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 20,
     marginHorizontal: 0,
-    marginBottom: 10,
+    marginBottom: 15,
     width: CARD_WIDTH,
     alignItems: 'flex-start',
     shadowColor: '#000',
@@ -183,12 +277,29 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#002f3d',
   },
-  cardDescription: {
+  cardLabel: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 10,
+  },
+  cardValue: {
     fontSize: 16,
-    color: '#555',
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 24,
+    color: '#333',
+    marginBottom: 2,
+  },
+  editButton: {
+    marginTop: 16,
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  editButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   signInButton: {
     width: '100%',
@@ -208,53 +319,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     paddingVertical: 5,
   },
-  loggedInCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 20,
-    marginHorizontal: 0,
-    marginBottom: 20,
-    width: CARD_WIDTH,
-    alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  loggedInHeader: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#002f3d',
-  },
-  loggedInText: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 5,
+  logoutFooter: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 30,
   },
   logoutButton: {
-    marginTop: 15,
-    width: '100%',
+    width: CARD_WIDTH,
     padding: 15,
     backgroundColor: '#dc3545',
     borderRadius: 8,
     alignItems: 'center',
   },
   logoutButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  addPropertyButton: {
-    marginTop: 15,
-    width: '100%',
-    padding: 15,
-    backgroundColor: '#28a745',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  addPropertyButtonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
@@ -295,5 +373,41 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 20,
     marginBottom: 10,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '86%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 22,
+    color: '#002f3d',
+  },
+  modalInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 14,
+    fontSize: 16,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 8,
   },
 });

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Text } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,13 +13,14 @@ import EnquiriesScreen from '../screens/EnquiriesScreen';
 import AccountScreen from '../screens/AccountScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import AddPropertyScreen from '../screens/AddPropertyScreen'; // <-- NEW IMPORT
+import AddPropertyScreen from '../screens/AddPropertyScreen';
+
+import { useAuth } from '../context/AuthContext';
 
 const HomeStack = createStackNavigator();
 const AccountStack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Stack Navigator for the Home Tab
 function HomeStackNavigator() {
   return (
     <HomeStack.Navigator>
@@ -37,7 +39,7 @@ function HomeStackNavigator() {
         component={PropertyDetailsScreen}
         options={{ title: 'Property Details' }}
       />
-      <HomeStack.Screen // <-- NEW SCREEN ADDED HERE
+      <HomeStack.Screen
         name="AddProperty"
         component={AddPropertyScreen}
         options={{ title: 'Add New Property' }}
@@ -46,7 +48,6 @@ function HomeStackNavigator() {
   );
 }
 
-// Stack Navigator for the Account Tab (handles Login/Register flow)
 function AccountStackNavigator() {
   return (
     <AccountStack.Navigator>
@@ -69,28 +70,50 @@ function AccountStackNavigator() {
   );
 }
 
+// --- Wrappers for dynamic tab icon and label --- //
+function SavedTabBarIcon({ color, size, focused }) {
+  const { user } = useAuth();
+  if (user && user.role === 'agent') {
+    return <Ionicons name="grid" size={size} color={color} />;
+  }
+  return <Ionicons name={focused ? 'heart' : 'heart-outline'} size={size} color={color} />;
+}
+function SavedTabBarLabel({ color }) {
+  const { user } = useAuth();
+  return (
+    <Text style={{ color, fontSize: 12 }}>
+      {user && user.role === 'agent' ? "Dashboard" : "Saved"}
+    </Text>
+  );
+}
 
 // Main Bottom Tab Navigator
 function AppNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-          if (route.name === 'HomeTab') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Saved') {
-            iconName = focused ? 'heart' : 'heart-outline';
-          } else if (route.name === 'Enquiries') {
-            iconName = focused ? 'mail' : 'mail-outline';
-          } else if (route.name === 'AccountTab') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
         tabBarActiveTintColor: '#00c3a5',
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
+        tabBarIcon: ({ color, size, focused }) => {
+          if (route.name === 'HomeTab') {
+            return <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />;
+          } else if (route.name === 'Saved') {
+            return <SavedTabBarIcon color={color} size={size} focused={focused} />;
+          } else if (route.name === 'Enquiries') {
+            return <Ionicons name={focused ? 'mail' : 'mail-outline'} size={size} color={color} />;
+          } else if (route.name === 'AccountTab') {
+            return <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />;
+          }
+        },
+        tabBarLabel: ({ focused, color }) => {
+          if (route.name === 'Saved') {
+            return <SavedTabBarLabel color={color} />;
+          }
+          if (route.name === 'HomeTab') return <Text style={{ color, fontSize: 12 }}>Home</Text>;
+          if (route.name === 'Enquiries') return <Text style={{ color, fontSize: 12 }}>Enquiries</Text>;
+          if (route.name === 'AccountTab') return <Text style={{ color, fontSize: 12 }}>Account</Text>;
+        }
       })}
     >
       <Tab.Screen

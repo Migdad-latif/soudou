@@ -1,64 +1,56 @@
-// MUST be the very first executable line to load environment variables
-require('dotenv').config();
-
 const express = require('express');
 const mongoose = require('mongoose');
+const dotenv = require('dotenv');
+const morgan = require('morgan');
+const cors = require('cors');
+const path = require('path');
+
+// Load environment variables from .env file
+dotenv.config();
+
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Import routes (using require)
-const properties = require('./routes/properties');
-const auth = require('./routes/auth');
-const uploads = require('./routes/uploads');
-const enquiries = require('./routes/enquiries'); // <-- ENSURE THIS IMPORT IS HERE
-
-// --- MongoDB Connection ---
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-    console.error('Error: MONGODB_URI is not defined in the .env file!');
-    process.exit(1);
+// Middleware
+app.use(express.json());
+app.use(cors());
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
 }
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('MongoDB Connected Successfully!'))
-  .catch(err => console.error('MongoDB connection error:', err));
-// --- End MongoDB Connection ---
-
-// Middleware: Process incoming requests
-app.use(express.json()); // Essential for parsing JSON bodies
-
-// Basic Route to confirm server is alive
-app.get('/', (req, res) => {
-  res.send('Welcome to the Soudou Backend API!');
-});
-
-// Simple POST endpoint for frontend connectivity test (keep for now)
-app.post('/test-frontend-post', (req, res) => {
-  console.log('DEBUG: Received POST request to /test-frontend-post');
-  console.log('DEBUG: Request Body:', req.body);
-  res.status(200).json({ success: true, message: 'Simple POST received by backend!', data: req.body });
-});
-
-// Mount routers
-app.use('/api/properties', properties);
-app.use('/api/auth', auth);
-app.use('/api/uploads', uploads);
-app.use('/api/enquiries', enquiries); // <-- ENSURE THIS MOUNTING IS HERE
-
-// --- GLOBAL ERROR HANDLING MIDDLEWARE (MUST BE LAST) ---
-app.use((err, req, res, next) => {
-  console.error('GLOBAL EXPRESS ERROR HANDLER:', err.stack);
-  res.status(err.statusCode || 500).json({
-    success: false,
-    error: err.message || 'Server Error: An unexpected error occurred'
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  // useCreateIndex: true, // Only for mongoose < 6
+})
+  .then(() => console.log('MongoDB connected'))
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
   });
-});
-// --- END GLOBAL ERROR HANDLING MIDDLEWARE ---
 
-// Start the Server
+// Routes
+app.use('/api/auth', require('./routes/auth'));      // Your authentication routes
+app.use('/api/users', require('./routes/user'));     // The user routes (profile, etc.)
+
+// Optionally: add other routes, e.g., properties, etc.
+
+// Serve static assets in production (optional, if serving frontend)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'client', 'build')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'client', 'build', 'index.html'));
+  });
+}
+
+// Error handling middleware (optional, for better error messages)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ success: false, error: 'Server error' });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Soudou Backend server running on port ${PORT}`);
-  console.log(`Access it at: http://localhost:${PORT}`);
-  console.log(`Test frontend POST endpoint at: http://192.168.1.214:3000/test-frontend-post`);
+  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });

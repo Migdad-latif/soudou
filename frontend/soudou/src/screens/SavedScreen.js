@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'; // Added useRef, useCallback for carousel
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image, Dimensions, Button } from 'react-native'; // <-- Ensure Button is here
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image, Dimensions, Button, Alert, Modal, TextInput, ScrollView } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,11 @@ export default function SavedScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Modal for edit property
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+
   // Helper component for image carousel inside FlatList (reused from HomeScreen)
   const PropertyImageCarousel = ({ photos }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -25,8 +30,8 @@ export default function SavedScreen() {
     const onArrowPress = useCallback(
       (direction) => {
         let newIndex = currentIndex + direction;
-        if (newIndex < 0) newIndex = photos.length - 1; // Wrap around
-        else if (newIndex >= photos.length) newIndex = 0; // Wrap around
+        if (newIndex < 0) newIndex = photos.length - 1;
+        else if (newIndex >= photos.length) newIndex = 0;
         setCurrentIndex(newIndex);
         flatListRef.current?.scrollToIndex({ index: newIndex, animated: true });
       },
@@ -36,7 +41,7 @@ export default function SavedScreen() {
     const onScroll = useCallback(
       (event) => {
         const offsetX = event.nativeEvent.contentOffset.x;
-        const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for card width
+        const newIndex = Math.round(offsetX / (screenWidth - 24));
         if (newIndex !== currentIndex) {
           setCurrentIndex(newIndex);
         }
@@ -44,7 +49,7 @@ export default function SavedScreen() {
       [currentIndex]
     );
 
-    const getItemLayout = useCallback((data, index) => ({ // For FlatList performance
+    const getItemLayout = useCallback((data, index) => ({
       length: screenWidth - 24,
       offset: (screenWidth - 24) * index,
       index,
@@ -68,7 +73,7 @@ export default function SavedScreen() {
           getItemLayout={getItemLayout}
           initialScrollIndex={currentIndex}
         />
-        {photos.length > 1 && ( // Only show arrows if more than one photo
+        {photos.length > 1 && (
           <>
             <TouchableOpacity style={[styles.arrowButton, styles.leftArrow]} onPress={() => onArrowPress(-1)} activeOpacity={0.7}>
               <Ionicons name="chevron-back-circle" size={36} color="rgba(255,255,255,0.8)" />
@@ -82,37 +87,47 @@ export default function SavedScreen() {
     );
   };
 
-
-  // Fetch saved properties when screen is focused or user/token changes
+  // Fetch properties (saved for users, my properties for agents)
   useEffect(() => {
-    const fetchSavedProperties = async () => {
+    const fetchProperties = async () => {
       if (!user || !token) {
         setSavedProperties([]);
-        setLoading(false); // Set loading to false if no user/token
+        setLoading(false);
         return;
       }
 
       setLoading(true);
       setError(null);
       try {
-        const headers = { 'Authorization': `Bearer ${token}` };
-        const response = await axios.get(`${API_BASE_URL}/auth/saved-properties`, { headers });
-        setSavedProperties(response.data.data);
+        if (user.role === 'agent') {
+          // Fetch properties added by this agent
+          const headers = { 'Authorization': `Bearer ${token}` };
+          const response = await axios.get(`${API_BASE_URL}/properties?agent=${user._id || user.id}`);
+          // Make sure each property has a stats object, even if zeros
+          const enriched = response.data.data.map(prop => ({
+            ...prop,
+            stats: prop.stats || { views: 0, clicks: 0, enquiries: 0 }
+          }));
+          setSavedProperties(enriched);
+        } else {
+          // Fetch saved properties for normal users
+          const headers = { 'Authorization': `Bearer ${token}` };
+          const response = await axios.get(`${API_BASE_URL}/auth/saved-properties`, { headers });
+          setSavedProperties(response.data.data);
+        }
       } catch (err) {
-        console.error("Error fetching saved properties:", err);
-        setError('Failed to load saved properties.');
+        setError('Failed to load properties.');
       } finally {
         setLoading(false);
       }
     };
 
     if (isFocused) {
-      fetchSavedProperties();
+      fetchProperties();
     }
   }, [isFocused, user, token]);
 
-
-  // Toggle Save Property Function (reused from HomeScreen)
+  // Toggle Save Property Function (only for normal users)
   const handleToggleSave = async (propertyId) => {
     if (!user || !token) {
       alert('Please log in to save properties.');
@@ -128,22 +143,77 @@ export default function SavedScreen() {
         setSavedProperties(prev => prev.filter(prop => prop._id !== propertyId));
         alert('Property unsaved!');
       } else {
-        // If property was saved, it means it's newly saved. We don't need to re-fetch
-        // the whole list unless it's for display on another screen.
         alert('Property saved!');
       }
     } catch (err) {
-      console.error("Error toggling save property:", err);
       alert('Failed to save/unsave property. Please try again.');
     }
   };
 
+  // Delete property (for agents)
+  const handleDeleteProperty = async (propertyId) => {
+    Alert.alert(
+      'Delete Property',
+      'Are you sure you want to delete this property? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              setLoading(true);
+              const headers = { 'Authorization': `Bearer ${token}` };
+              await axios.delete(`${API_BASE_URL}/properties/${propertyId}`, { headers });
+              setSavedProperties(prev => prev.filter(prop => prop._id !== propertyId));
+              alert('Property deleted!');
+            } catch (err) {
+              alert('Failed to delete property.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Open edit modal for a property
+  const handleEditProperty = (property) => {
+    setEditForm({ ...property });
+    setEditModalVisible(true);
+  };
+
+  // Submit edit property (for agents)
+  const handleSubmitEdit = async () => {
+    if (!editForm.title || !editForm.price || !editForm.location) {
+      Alert.alert('Missing Fields', 'Title, Price, and Location are required.');
+      return;
+    }
+    setEditLoading(true);
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const payload = {
+        ...editForm,
+        price: Number(editForm.price),
+        isAvailable: !!editForm.isAvailable,
+      };
+      await axios.put(`${API_BASE_URL}/properties/${editForm._id}`, payload, { headers });
+      setSavedProperties(prev =>
+        prev.map(prop => prop._id === editForm._id ? { ...prop, ...payload } : prop)
+      );
+      setEditModalVisible(false);
+      alert('Property updated!');
+    } catch (err) {
+      alert('Failed to update property.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   if (authLoading || loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading saved properties...</Text>
+        <Text>Loading properties...</Text>
       </View>
     );
   }
@@ -151,7 +221,7 @@ export default function SavedScreen() {
   if (!user) {
     return (
       <View style={styles.center}>
-        <Text style={styles.noUserText}>Please log in to view your saved properties.</Text>
+        <Text style={styles.noUserText}>Please log in to view your properties.</Text>
         <Button title="Sign In" onPress={() => navigation.navigate('AccountTab', { screen: 'Login' })} color="#007bff" />
       </View>
     );
@@ -165,23 +235,58 @@ export default function SavedScreen() {
     );
   }
 
+  // Agent: add property button
+  const renderAddPropertyButton = () => (
+    <TouchableOpacity style={styles.addPropertyButton} onPress={() => navigation.navigate('HomeTab', { screen: 'AddProperty' })}>
+      <Ionicons name="add-circle" size={28} color="#fff" style={{ marginRight: 6 }} />
+      <Text style={styles.addPropertyButtonText}>Add Property</Text>
+    </TouchableOpacity>
+  );
+
+  // Label per role
+  let mainLabel = "Saved Properties";
+  if (user.role === "agent") {
+    mainLabel = "Dashboard";
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Saved Properties</Text>
+      <Text style={styles.header}>
+        {mainLabel}
+      </Text>
+
+      {user.role === 'agent' && renderAddPropertyButton()}
 
       {savedProperties.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.noPropertiesText}>You haven't saved any properties yet.</Text>
-          <Button title="Browse Properties" onPress={() => navigation.navigate('HomeTab')} color="#007bff" />
+          <Text style={styles.noPropertiesText}>
+            {user.role === 'agent'
+              ? "You haven't added any properties yet."
+              : "You haven't saved any properties yet."}
+          </Text>
+          <Button
+            title={user.role === 'agent' ? "Add Property" : "Browse Properties"}
+            onPress={() =>
+              user.role === 'agent'
+                ? navigation.navigate('HomeTab', { screen: 'AddProperty' })
+                : navigation.navigate('HomeTab')
+            }
+            color="#007bff"
+          />
         </View>
       ) : (
         <FlatList
           data={savedProperties}
-          keyExtractor={(item) => item._id}
+          keyExtractor={item => item._id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => navigation.navigate('HomeTab', { screen: 'PropertyDetails', params: { propertyId: item._id } })} style={styles.propertyCard}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate('HomeTab', { screen: 'PropertyDetails', params: { propertyId: item._id } })
+              }
+              style={styles.propertyCard}
+            >
               {item.photos?.length ? (
                 <PropertyImageCarousel photos={item.photos} />
               ) : (
@@ -194,9 +299,12 @@ export default function SavedScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>{item.title}</Text>
                 <Text style={styles.cardLocation}>
-                  {item.location?.city || 'Unknown Location'}, {item.location?.country || 'Unknown Country'}
+                  {item.location?.city || 'Unknown Location'},{' '}
+                  {item.location?.country || 'Unknown Country'}
                 </Text>
-                <Text style={styles.cardPrice}>{item.price.toLocaleString('en-US')} GNF</Text>
+                <Text style={styles.cardPrice}>
+                  {item.price?.toLocaleString('en-US') || 'N/A'} GNF
+                </Text>
                 <Text style={styles.cardPropertyType}>
                   {Array.isArray(item.propertyType) && item.propertyType.length > 0
                     ? item.propertyType.join(', ')
@@ -207,25 +315,137 @@ export default function SavedScreen() {
                     Bedrooms: {item.bedrooms || 0} | Bathrooms: {item.bathrooms || 0}
                   </Text>
                 </View>
+
+                {/* Agent property stats */}
+                {user.role === 'agent' && item.stats && (
+                  <View style={styles.statsRow}>
+                    <View style={styles.statsItem}>
+                      <Ionicons name="eye" size={18} color="#888" style={{ marginRight: 2 }} />
+                      <Text style={styles.statsValue}>{item.stats.views ?? 0}</Text>
+                      <Text style={styles.statsLabel}>Views</Text>
+                    </View>
+                    <View style={styles.statsItem}>
+                      <Ionicons name="hand-right-outline" size={18} color="#888" style={{ marginRight: 2 }} />
+                      <Text style={styles.statsValue}>{item.stats.clicks ?? 0}</Text>
+                      <Text style={styles.statsLabel}>Clicks</Text>
+                    </View>
+                    <View style={styles.statsItem}>
+                      <Ionicons name="mail-outline" size={18} color="#888" style={{ marginRight: 2 }} />
+                      <Text style={styles.statsValue}>{item.stats.enquiries ?? 0}</Text>
+                      <Text style={styles.statsLabel}>Enquiries</Text>
+                    </View>
+                  </View>
+                )}
+
+                {user.role === 'agent' && (
+                  <View style={styles.agentCardActions}>
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={() => handleEditProperty(item)}
+                    >
+                      <Ionicons name="create-outline" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteProperty(item._id)}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#fff" />
+                      <Text style={styles.actionButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
-              {/* Save/Unsave Heart Icon */}
-              {user && ( // Only show if user is logged in
-                <TouchableOpacity
-                  style={styles.saveIcon}
-                  onPress={() => handleToggleSave(item._id)} // Toggle save status
-                >
-                  <Ionicons
-                    name={'heart'} // Always filled heart as it's saved list
-                    size={28}
-                    color={'#dc3545'} // Always red if displayed here
-                  />
-                </TouchableOpacity>
+              {/* Saved/Heart icon and label below the card - only for normal users */}
+              {user.role !== 'agent' && (
+                <View style={styles.savedLabelWrapper}>
+                  <TouchableOpacity
+                    style={styles.saveIcon}
+                    onPress={() => handleToggleSave(item._id)}
+                  >
+                    <Ionicons
+                      name={'heart'}
+                      size={28}
+                      color={'#dc3545'}
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.savedLabelText}>Saved</Text>
+                </View>
               )}
             </TouchableOpacity>
           )}
         />
       )}
+
+      {/* Edit Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Property</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Title"
+              value={editForm.title || ''}
+              onChangeText={text => setEditForm({ ...editForm, title: text })}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Price"
+              value={String(editForm.price || '')}
+              onChangeText={text => setEditForm({ ...editForm, price: text })}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Location"
+              value={editForm.location || ''}
+              onChangeText={text => setEditForm({ ...editForm, location: text })}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Description"
+              value={editForm.description || ''}
+              onChangeText={text => setEditForm({ ...editForm, description: text })}
+              multiline
+            />
+            <View style={styles.checkboxRow}>
+              <TouchableOpacity
+                style={[
+                  styles.checkbox,
+                  editForm.isAvailable ? styles.checkboxChecked : null,
+                ]}
+                onPress={() =>
+                  setEditForm({ ...editForm, isAvailable: !editForm.isAvailable })
+                }
+              >
+                {editForm.isAvailable && (
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                )}
+              </TouchableOpacity>
+              <Text style={styles.checkboxLabel}>Available</Text>
+            </View>
+            <View style={styles.modalActionRow}>
+              <Button
+                title="Cancel"
+                color="#888"
+                onPress={() => setEditModalVisible(false)}
+              />
+              <Button
+                title={editLoading ? "Saving..." : "Save"}
+                color="#007bff"
+                onPress={handleSubmitEdit}
+                disabled={editLoading}
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -233,7 +453,7 @@ export default function SavedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5', // Light background
+    backgroundColor: '#f5f5f5',
     paddingTop: 50,
   },
   center: {
@@ -249,6 +469,22 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#333',
     textAlign: 'center',
+  },
+  addPropertyButton: {
+    flexDirection: 'row',
+    backgroundColor: '#00c3a5',
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  addPropertyButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   noUserText: {
     fontSize: 18,
@@ -268,12 +504,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   listContent: {
-    paddingHorizontal: 12, // Match card margin
+    paddingHorizontal: 12,
     paddingBottom: 20,
   },
-  // Reused styles from HomeScreen for property cards
   propertyCard: {
-    marginHorizontal: 0, // No extra margin here, handled by listContent
+    marginHorizontal: 0,
     marginBottom: 16,
     borderRadius: 12,
     backgroundColor: '#fff',
@@ -288,7 +523,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   carouselContainer: {
-    width: screenWidth - 24, // Adjusted for card's marginHorizontal * 2
+    width: screenWidth - 24,
     height: 180,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
@@ -296,7 +531,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   carouselImage: {
-    width: screenWidth - 24, // Match carouselContainer width
+    width: screenWidth - 24,
     height: 180,
   },
   arrowButton: {
@@ -357,28 +592,133 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#555',
   },
-  cardActionRow: {
+  statsRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
+    justifyContent: 'space-around',
+    marginTop: 10,
+    marginBottom: 4,
   },
-  cardButton: {
-    backgroundColor: '#007AFF',
+  statsItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    marginHorizontal: 5,
+  },
+  statsValue: {
+    fontWeight: 'bold',
+    marginLeft: 2,
+    marginRight: 2,
+    color: '#222',
+  },
+  statsLabel: {
+    fontSize: 12,
+    color: '#888',
+    marginLeft: 2,
+  },
+  agentCardActions: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 12,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#007bff',
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    marginRight: 8,
   },
-  cardButtonText: {
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dc3545',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  actionButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+    marginLeft: 4,
+    fontSize: 14,
   },
   saveIcon: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    borderRadius: 20,
-    padding: 5,
+    marginRight: 6,
+  },
+  savedLabelWrapper: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginLeft: 14,
+    marginBottom: 10,
+  },
+  savedLabelText: {
+    fontSize: 16,
+    color: '#dc3545',
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 18,
+    width: '90%',
+    maxHeight: '85%',
+    alignItems: 'stretch',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#222',
+    textAlign: 'center',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#bbb',
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 16,
+    backgroundColor: '#fafafa',
+    color: '#333',
+    marginBottom: 10,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 1,
+    borderColor: '#007bff',
+    borderRadius: 4,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+  },
+  checkboxChecked: {
+    backgroundColor: '#007bff',
+    borderColor: '#007bff',
+  },
+  checkboxLabel: {
+    fontSize: 16,
+    color: '#222',
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
   },
 });

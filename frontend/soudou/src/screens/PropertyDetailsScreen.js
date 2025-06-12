@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal, Linking, TextInput, Alert } from 'react-native';
 import axios from 'axios';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
 import { useAuth } from '../context/AuthContext';
@@ -9,16 +9,15 @@ import { useAuth } from '../context/AuthContext';
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
 
-// IMPORTANT: Make sure this is your correct local IP address and port
 const API_URL = 'http://192.168.1.214:3000/api/properties';
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
-const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`; // Enquiries API endpoint
-
+const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`;
 
 export default function PropertyDetailsScreen() {
   const route = useRoute();
+  const navigation = useNavigation();
   const { propertyId } = route.params;
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,20 +25,18 @@ export default function PropertyDetailsScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [isPropertySaved, setIsPropertySaved] = useState(false);
-  const [enquiryModalVisible, setEnquiryModalVisible] = useState(false); // NEW: State for enquiry modal
-  const [enquiryMessage, setEnquiryMessage] = useState(''); // NEW: State for enquiry message
+  const [enquiryModalVisible, setEnquiryModalVisible] = useState(false);
+  const [enquiryMessage, setEnquiryMessage] = useState('');
 
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
 
-  // Default region for the map if property coordinates are not available yet
   const defaultRegion = {
-    latitude: 9.5098, // Center of Conakry
-    longitude: -13.7123, // Center of Conakry
+    latitude: 9.5098,
+    longitude: -13.7123,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   };
-
 
   useEffect(() => {
     const fetchPropertyDetails = async () => {
@@ -47,9 +44,7 @@ export default function PropertyDetailsScreen() {
         setLoading(true);
         setError(null);
 
-        if (!propertyId) {
-          throw new Error('Property ID is missing or undefined.');
-        }
+        if (!propertyId) throw new Error('Property ID is missing or undefined.');
 
         const response = await axios.get(`${API_URL}/${propertyId}`);
         setProperty(response.data.data);
@@ -62,13 +57,10 @@ export default function PropertyDetailsScreen() {
             const savedIds = new Set(savedResponse.data.data.map(prop => prop._id));
             setIsPropertySaved(savedIds.has(propertyId));
           } catch (savedErr) {
-            console.error("Error checking if property is saved:", savedErr);
             setIsPropertySaved(false);
           }
         }
-
       } catch (err) {
-        console.error('Error fetching property details:', err);
         setError('Failed to load property details. Check network and ID.');
       } finally {
         setLoading(false);
@@ -83,18 +75,15 @@ export default function PropertyDetailsScreen() {
     }
   }, [propertyId, user, token]);
 
-
   const handleToggleSave = async () => {
     if (!user || !token) {
       Alert.alert('Authentication Required', 'Please log in to save properties.');
       navigation.navigate('AccountTab', { screen: 'Login' });
       return;
     }
-
     try {
       const headers = { 'Authorization': `Bearer ${token}` };
       const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers });
-
       if (response.data.action === 'saved') {
         setIsPropertySaved(true);
         Alert.alert('Success', 'Property saved!');
@@ -103,11 +92,9 @@ export default function PropertyDetailsScreen() {
         Alert.alert('Success', 'Property unsaved!');
       }
     } catch (err) {
-      console.error("Error toggling save property:", err);
       Alert.alert('Error', 'Failed to save/unsave property. Please try again.');
     }
   };
-
 
   const handleCallAgent = () => {
     if (property?.agent?.phoneNumber) {
@@ -125,67 +112,53 @@ export default function PropertyDetailsScreen() {
     }
   };
 
-
-  // --- NEW: Handle Send Enquiry ---
   const handleSendEnquiry = async () => {
     if (!user || !token) {
       Alert.alert('Authentication Required', 'Please log in to send an enquiry.');
-      setEnquiryModalVisible(false); // Close modal if not logged in
+      setEnquiryModalVisible(false);
       navigation.navigate('AccountTab', { screen: 'Login' });
       return;
     }
-
     if (!enquiryMessage.trim()) {
       Alert.alert('Missing Message', 'Please type your enquiry message.');
       return;
     }
-
-    setLoading(true); // Show global loading for enquiry submission
+    setLoading(true);
     try {
       const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
       const response = await axios.post(ENQUIRIES_API_URL, {
         propertyId: propertyId,
         message: enquiryMessage,
       }, { headers });
-
       if (response.status === 201) {
         Alert.alert('Success', 'Your enquiry has been sent to the agent!');
-        setEnquiryMessage(''); // Clear message
-        setEnquiryModalVisible(false); // Close modal
+        setEnquiryMessage('');
+        setEnquiryModalVisible(false);
       } else {
         Alert.alert('Error', `Failed to send enquiry: ${response.data?.error || 'Please try again.'}`);
       }
     } catch (err) {
-      console.error("Error sending enquiry:", err);
       Alert.alert('Error', 'Failed to send enquiry. Please check your network.');
     } finally {
       setLoading(false);
     }
   };
-  // --- END NEW: Handle Send Enquiry ---
 
-
-  // Scroll FlatList to index
   const scrollToIndex = (index, ref) => {
     if (!property || !property.photos || !ref.current) return;
-
     let newIndex = index;
     if (index < 0) newIndex = 0;
     if (index >= property.photos.length) newIndex = property.photos.length - 1;
-
     setCurrentIndex(newIndex);
-
     ref.current.scrollToIndex({ index: newIndex, animated: true });
   };
 
-  // FlatList getItemLayout to fix scrollToIndex error
   const getItemLayout = (_, index) => ({
     length: screenWidth,
     offset: screenWidth * index,
     index,
   });
 
-  // Render arrow buttons
   const renderArrow = (direction, onPress) => {
     const iconName = direction === 'left' ? 'chevron-back' : 'chevron-forward';
     return (
@@ -227,7 +200,12 @@ export default function PropertyDetailsScreen() {
     );
   }
 
-  // Determine the map region based on actual coordinates or fallback to default
+  const isAgent =
+    user &&
+    user.role === 'agent' &&
+    property.agent &&
+    (property.agent._id === user._id || property.agent === user._id);
+
   const mapRegion = property.coordinates && property.coordinates.coordinates && property.coordinates.coordinates.length === 2
     ? {
         latitude: property.coordinates.coordinates[1],
@@ -249,7 +227,7 @@ export default function PropertyDetailsScreen() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               data={property.photos}
-              keyExtractor={(photo, index) => photo + index}
+              keyExtractor={(photo, index) => `${photo}-${index}`}
               renderItem={({ item: photoUri, index }) => (
                 <TouchableOpacity
                   activeOpacity={0.9}
@@ -278,9 +256,7 @@ export default function PropertyDetailsScreen() {
                 setCurrentIndex(index);
               }}
             />
-            {/* Left Arrow */}
             {currentIndex > 0 && renderArrow('left', () => scrollToIndex(currentIndex - 1, carouselRef))}
-            {/* Right Arrow */}
             {currentIndex < property.photos.length - 1 && renderArrow('right', () => scrollToIndex(currentIndex + 1, carouselRef))}
           </View>
         ) : (
@@ -347,20 +323,23 @@ export default function PropertyDetailsScreen() {
             <Text>- Available: {property.isAvailable ? 'Yes' : 'No'}</Text>
           </View>
 
-          <View style={styles.contactButtons}>
-              <Button title="Call Agent" onPress={handleCallAgent} color="#007bff" />
-              <Button title="Text Agent" onPress={handleTextAgent} color="#00c3a5" />
-          </View>
-          {/* NEW: Enquire Button */}
-          {user && ( // Only show if user is logged in
-            <TouchableOpacity style={styles.enquireButton} onPress={() => setEnquiryModalVisible(true)}>
-              <Text style={styles.enquireButtonText}>Send Enquiry</Text>
-            </TouchableOpacity>
+          {/* Only show contact/enquiry buttons if NOT agent */}
+          {!isAgent && (
+            <>
+              <View style={styles.contactButtons}>
+                <Button title="Call Agent" onPress={handleCallAgent} color="#007bff" />
+                <Button title="Text Agent" onPress={handleTextAgent} color="#00c3a5" />
+              </View>
+              {user && (
+                <TouchableOpacity style={styles.enquireButton} onPress={() => setEnquiryModalVisible(true)}>
+                  <Text style={styles.enquireButtonText}>Send Enquiry</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
 
-
           {/* Save/Unsave Heart Icon */}
-          {user && ( // Only show if user is logged in
+          {user && (
             <TouchableOpacity
               style={styles.saveIcon}
               onPress={handleToggleSave}
@@ -372,7 +351,6 @@ export default function PropertyDetailsScreen() {
               />
             </TouchableOpacity>
           )}
-
         </View>
       </ScrollView>
 
@@ -385,7 +363,7 @@ export default function PropertyDetailsScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             data={property.photos}
-            keyExtractor={(photo, index) => photo + index}
+            keyExtractor={(photo, index) => `${photo}-${index}`}
             renderItem={({ item: photoUri }) => (
               <Image source={{ uri: photoUri }} style={styles.fullscreenImage} resizeMode="contain" />
             )}
@@ -411,7 +389,7 @@ export default function PropertyDetailsScreen() {
         </View>
       </Modal>
 
-      {/* NEW: Enquiry Modal */}
+      {/* Enquiry Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -438,12 +416,12 @@ export default function PropertyDetailsScreen() {
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // ... (same as your previous styles)
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -545,7 +523,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   enquireButton: {
-    backgroundColor: '#00c3a5', // Rightmove green
+    backgroundColor: '#00c3a5',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',
@@ -603,7 +581,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 5,
   },
-  modalOverlay: { // Styles for the enquiry modal
+  modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

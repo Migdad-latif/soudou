@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Image, Platform, Button } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, Image, Modal, Platform, Pressable } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
 const UPLOAD_API_URL = 'http://192.168.1.214:3000/api/uploads/image';
+
 const MAX_PHOTOS_ALLOWED = 5;
 
 const propertyTypeOptions = ['House', 'Apartment', 'Land', 'Commercial', 'Office'];
@@ -26,13 +27,17 @@ export default function AddPropertyScreen() {
   const [form, setForm] = useState({
     title: '', description: '', price: '', currency: 'GNF', propertyType: 'House',
     listingType: 'For Sale', bedrooms: '0', bathrooms: '0', livingRooms: '0',
-    contactName: '', location: '',
+    contactName: '', location: ''
   });
   const [gpsCoords, setGpsCoords] = useState({ latitude: null, longitude: null });
   const [locationMethod, setLocationMethod] = useState('typed');
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
+
+  // For aborting image upload if navigating away
+  const uploadAbortController = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -44,42 +49,108 @@ export default function AddPropertyScreen() {
       let { status: medLibStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (medLibStatus !== 'granted') Alert.alert('Permission Denied', 'Media library permission is needed.');
     })();
+    // Cancel upload on unmount/navigation
+    return () => {
+      if (uploadAbortController.current) {
+        uploadAbortController.current.abort();
+      }
+    };
   }, []);
 
+  // Ensure loading is false on mount
+  useEffect(() => { setLoading(false); }, []);
+
   const updateFormField = useCallback((field, value) => { setForm((prev) => ({ ...prev, [field]: value })); }, []);
+
   const handleGetLocation = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') { const { status: newStatus } = await Location.requestForegroundPermissionsAsync(); if (newStatus !== 'granted') { Alert.alert('Permission Denied', 'Location permission is required.'); return; } }
+      if (status !== 'granted') { 
+        const { status: newStatus } = await Location.requestForegroundPermissionsAsync(); 
+        if (newStatus !== 'granted') { 
+          Alert.alert('Permission Denied', 'Location permission is required.'); 
+          setLoading(false);
+          return; 
+        } 
+      }
       let locationResult = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setGpsCoords({ latitude: locationResult.coords.latitude, longitude: locationResult.coords.longitude });
       setLocationMethod('gps');
       let geocodedAddress = await Location.reverseGeocodeAsync({ latitude: locationResult.coords.latitude, longitude: locationResult.coords.longitude });
       if (geocodedAddress?.length) {
-        const addr = geocodedAddress[0]; const formattedAddress = [addr.name, addr.street, addr.city, addr.region, addr.country].filter(Boolean).join(', ');
-        updateFormField('location', formattedAddress); Alert.alert('Location Captured', `Location: ${formattedAddress}`);
-      } else { updateFormField('location', `Lat: ${locationResult.coords.latitude}, Lon: ${locationResult.coords.longitude}`); Alert.alert('Location Captured', 'Could not get address from coordinates.'); }
-    } catch (err) { console.error('Error getting location:', err); Alert.alert('Error', 'Failed to get current location. Ensure GPS is enabled.'); setGpsCoords({ latitude: null, longitude: null }); setLocationMethod('typed'); } finally { setLoading(false); }
+        const addr = geocodedAddress[0]; 
+        const formattedAddress = [addr.name, addr.street, addr.city, addr.region, addr.country].filter(Boolean).join(', ');
+        updateFormField('location', formattedAddress); 
+        Alert.alert('Location Captured', `Location: ${formattedAddress}`);
+      } else { 
+        updateFormField('location', `Lat: ${locationResult.coords.latitude}, Lon: ${locationResult.coords.longitude}`); 
+        Alert.alert('Location Captured', 'Could not get address from coordinates.'); 
+      }
+    } catch (err) { 
+      console.error('Error getting location:', err); 
+      Alert.alert('Error', 'Failed to get current location. Ensure GPS is enabled.'); 
+      setGpsCoords({ latitude: null, longitude: null }); 
+      setLocationMethod('typed'); 
+    } finally { setLoading(false); }
   }, []);
 
   const selectOrTakePhoto = () => {
-    if (photos.length >= MAX_PHOTOS_ALLOWED) { Alert.alert('Photo Limit Reached', `You can only upload up to ${MAX_PHOTOS_ALLOWED} photos.`); return; }
-    Alert.alert('Add Photo', 'Choose an option', [{ text: 'Select from Gallery', onPress: () => handleImagePick(false) }, { text: 'Take Photo', onPress: () => handleImagePick(true) }, { text: 'Cancel', style: 'cancel' },], { cancelable: true });
+    if (photos.length >= MAX_PHOTOS_ALLOWED) { 
+      Alert.alert('Photo Limit Reached', `You can only upload up to ${MAX_PHOTOS_ALLOWED} photos.`); 
+      return; 
+    }
+    Alert.alert('Add Photo', 'Choose an option', [
+      { text: 'Select from Gallery', onPress: () => handleImagePick(false) },
+      { text: 'Take Photo', onPress: () => handleImagePick(true) },
+      { text: 'Cancel', style: 'cancel' },
+    ], { cancelable: true });
+  };
+
+  const getCompatibleMediaTypes = () => {
+    // Backwards-compatible mediaTypes for all expo-image-picker versions
+    if (ImagePicker.MediaType && ImagePicker.MediaType.IMAGE) {
+      return ImagePicker.MediaType.IMAGE;
+    } else if (ImagePicker.MediaTypeOptions && ImagePicker.MediaTypeOptions.Images) {
+      return ImagePicker.MediaTypeOptions.Images;
+    }
+    return 'Images';
   };
 
   const handleImagePick = async (useCamera) => {
     try {
-      const options = { mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.7, base64: false, };
+      const options = {
+        mediaTypes: getCompatibleMediaTypes(),
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.7,
+        base64: false,
+      };
       let result;
-      if (useCamera) { result = await ImagePicker.launchCameraAsync(options); } else { result = await ImagePicker.launchImageLibraryAsync(options); }
-      if (result.canceled) { console.log('User cancelled image picker/camera.'); } else if (result.assets && result.assets.length > 0) { await uploadSelectedImage(result.assets[0]); } else { Alert.alert('Error', `Could not ${useCamera ? 'take photo' : 'select image'}.`); }
-    } catch (err) { console.error('Image pick error:', err); Alert.alert('Error', 'Failed to pick image. Ensure permissions are granted in device settings.'); }
+      if (useCamera) {
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+      if (result.canceled) {
+        console.log('User cancelled image picker/camera.');
+      } else if (result.assets && result.assets.length > 0) {
+        setPhotos((prev) => [...prev, { uri: result.assets[0].uri }]);
+        await uploadSelectedImage(result.assets[0]);
+      } else {
+        Alert.alert('Error', `Could not ${useCamera ? 'take photo' : 'select image'}.`);
+      }
+    } catch (err) {
+      console.error('Image pick error:', err);
+      Alert.alert('Error', 'Failed to pick image. Ensure permissions are granted in device settings.');
+    }
   };
 
   const uploadSelectedImage = async (imageAsset) => {
     setLoading(true); setError(null);
     try {
+      const controller = new AbortController();
+      uploadAbortController.current = controller;
       const formData = new FormData();
       formData.append('image', {
         uri: Platform.OS === 'android' ? imageAsset.uri : imageAsset.uri.replace('file://', ''),
@@ -87,49 +158,100 @@ export default function AddPropertyScreen() {
         name: imageAsset.fileName || `photo_${Date.now()}.jpg`,
       });
 
-      // --- AGGRESSIVE DEBUGGING HEADERS ---
-      // Axios usually sets this automatically, but explicitly defining here
-      // and let's try WITHOUT the boundary.
       const headers = {
-        'Content-Type': 'multipart/form-data', // This should be enough for Axios
+        'Content-Type': 'multipart/form-data',
         ...(token && { 'Authorization': `Bearer ${token}` }),
-        // 'Accept': 'application/json', // Can add if needed
-        // 'Connection': 'Keep-Alive', // Sometimes helps with persistent connections
-        // 'Cache-Control': 'no-cache', // Sometimes helps with stale requests
       };
-      // --- END AGGRESSIVE DEBUGGING HEADERS ---
 
-      console.log('DEBUG: Attempting image upload with Axios to:', UPLOAD_API_URL);
-      // console.log('DEBUG: FormData content:', formData); // Can't log FormData directly
+      const response = await axios.post(
+        UPLOAD_API_URL,
+        formData,
+        { headers, signal: controller.signal, timeout: 15000 }
+      );
 
-      const response = await axios.post(UPLOAD_API_URL, formData, { headers });
-
-      if (response.status === 200) {
-        setPhotos((prev) => [...prev, response.data.data.url]);
+      if (response.status === 200 && response.data?.data?.url) {
+        setPhotos((prev) =>
+          prev.map((photo) =>
+            photo.uri === imageAsset.uri && !photo.serverUrl
+              ? { ...photo, serverUrl: response.data.data.url }
+              : photo
+          )
+        );
         Alert.alert('Success', 'Image uploaded successfully!');
-        console.log('Cloudinary URL:', response.data.data.url);
       } else {
         Alert.alert('Error', `Image upload failed: ${response.data?.error || 'Please check the server logs.'}`);
         console.error('Upload error (backend response):', response.data);
       }
     } catch (uploadError) {
-      console.error('Upload failed (Axios error):', uploadError);
-      const errorMessage = uploadError.response?.data?.error || uploadError.message || 'Network error or server unreachable.';
-      Alert.alert('Error', `Failed to upload image: ${errorMessage}`);
+      if (uploadError.name === "CanceledError" || uploadError.name === "AbortError") {
+        // Don't alert on cancelled uploads
+        console.log("Upload cancelled due to unmount/navigation");
+      } else {
+        console.error('Upload failed (Axios error):', uploadError);
+        const errorMessage = uploadError.response?.data?.error || uploadError.message || 'Network error or server unreachable.';
+        Alert.alert('Error', `Failed to upload image: ${errorMessage}`);
+      }
     } finally {
       setLoading(false);
+      uploadAbortController.current = null;
+    }
+  };
+
+  const handleDeletePhoto = (index) => {
+    Alert.alert(
+      "Delete Photo",
+      "Are you sure you want to delete this photo?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => setPhotos((prev) => prev.filter((_, i) => i !== index)),
+        },
+      ]
+    );
+  };
+
+  const handleEditPhoto = async (index) => {
+    try {
+      const options = {
+        mediaTypes: getCompatibleMediaTypes(),
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.7,
+        base64: false,
+      };
+      let result = await ImagePicker.launchImageLibraryAsync(options);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newAsset = result.assets[0];
+        setPhotos((prev) =>
+          prev.map((photo, i) =>
+            i === index ? { uri: newAsset.uri } : photo
+          )
+        );
+        await uploadSelectedImage(newAsset);
+      }
+    } catch (err) {
+      console.error('Image edit error:', err);
+      Alert.alert('Error', 'Failed to edit image.');
     }
   };
 
   const handleAddProperty = async () => {
     if (!user || !token) { Alert.alert('Authentication Required', 'Please sign in to add a property.'); navigation.navigate('AccountTab', { screen: 'Login' }); return; }
-    const requiredFields = ['title', 'description', 'price', 'location', 'contactName']; for (const field of requiredFields) { if (!form[field]) { Alert.alert('Missing Fields', `Please fill in '${field}' and all other required fields.`); return; } }
+    const requiredFields = ['title', 'description', 'price', 'location', 'contactName']; 
+    for (const field of requiredFields) { 
+      if (!form[field]) { 
+        Alert.alert('Missing Fields', `Please fill in '${field}' and all other required fields.`); return; 
+      } 
+    }
     if (photos.length === 0) { Alert.alert('Missing Photos', 'Please upload at least one photo.'); return; }
     if (isNaN(Number(form.price))) { Alert.alert('Invalid Price', 'Please enter a valid number for price.'); return; }
 
     setLoading(true); setError(null);
     try {
-      const propertyData = { ...form, price: Number(form.price), bedrooms: form.bedrooms === '8+' ? 8 : Number(form.bedrooms), bathrooms: form.bathrooms === '8+' ? 8 : Number(form.bathrooms), livingRooms: Number(form.livingRooms), photos, agent: user.id, };
+      const photosToSend = photos.map((p) => p.serverUrl || p.uri);
+      const propertyData = { ...form, price: Number(form.price), bedrooms: form.bedrooms === '8+' ? 8 : Number(form.bedrooms), bathrooms: form.bathrooms === '8+' ? 8 : Number(form.bathrooms), livingRooms: Number(form.livingRooms), photos: photosToSend, agent: user.id, };
       if (locationMethod === 'gps' && gpsCoords.latitude && gpsCoords.longitude) { propertyData.coordinates = { type: 'Point', coordinates: [gpsCoords.longitude, gpsCoords.latitude], }; }
       const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, };
       const response = await axios.post(API_URL, propertyData, { headers });
@@ -143,11 +265,22 @@ export default function AddPropertyScreen() {
     setPhotos([]); setGpsCoords({ latitude: null, longitude: null }); setLocationMethod('typed'); setError(null);
   };
   const promptAddAnother = () => {
-    Alert.alert('Add Another?', 'Would you like to add another property?', [{ text: 'No, Go Home', onPress: () => navigation.navigate('HomeTab'), style: 'cancel' }, { text: 'Yes', onPress: () => {} },], { cancelable: false });
+    Alert.alert('Add Another?', 'Would you like to add another property?', [
+      { text: 'No, Go Home', onPress: () => navigation.navigate('HomeTab'), style: 'cancel' },
+      { text: 'Yes', onPress: () => {} },
+    ], { cancelable: false });
   };
 
+  // Fullscreen modal view
+  const openFullScreen = (photo) => setFullscreenPhoto(photo.uri || photo.serverUrl);
+  const closeFullScreen = () => setFullscreenPhoto(null);
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 80 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.heading}>Add Property</Text>
       <Text style={styles.label}>Contact Name *</Text>
       <TextInput style={styles.input} placeholder="Your Name or Agency Name" value={form.contactName} onChangeText={(text) => updateFormField('contactName', text)} />
@@ -170,7 +303,25 @@ export default function AddPropertyScreen() {
 
       <Text style={styles.label}>Photos (max {MAX_PHOTOS_ALLOWED})</Text>
       <View style={styles.photosContainer}>
-        {photos.map((uri, idx) => (<Image key={idx} source={{ uri }} style={styles.photo} />))}
+        {photos.map((photo, idx) => (
+          <View key={idx} style={styles.photoWithActions}>
+            <Pressable onPress={() => openFullScreen(photo)}>
+              <Image
+                source={{ uri: photo.uri || photo.serverUrl }}
+                style={styles.photo}
+                resizeMode="cover"
+              />
+            </Pressable>
+            <View style={styles.photoActions}>
+              <TouchableOpacity onPress={() => handleEditPhoto(idx)} style={styles.actionButton} >
+                <MaterialIcons name="edit" size={20} color="#007AFF" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDeletePhoto(idx)} style={styles.actionButton}>
+                <MaterialIcons name="delete" size={20} color="#ff4444" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
         {photos.length < MAX_PHOTOS_ALLOWED && (
           <TouchableOpacity style={styles.addPhotoButton} onPress={selectOrTakePhoto}>
             <Ionicons name="add" size={30} color="#666" />
@@ -200,13 +351,42 @@ export default function AddPropertyScreen() {
 
       {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" style={{ marginVertical: 15 }} />
-      ) : (
-        <TouchableOpacity style={styles.submitButton} onPress={handleAddProperty}>
-          <Text style={styles.submitButtonText}>Add Property</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={[
+          styles.submitButton,
+          loading && { backgroundColor: '#aaa' }
+        ]}
+        onPress={handleAddProperty}
+        disabled={loading}
+      >
+        <Text style={styles.submitButtonText}>
+          {loading ? "Uploading..." : "Add Property"}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Fullscreen Image Modal */}
+      <Modal
+        visible={!!fullscreenPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={closeFullScreen}
+      >
+        <View style={styles.fullscreenContainer}>
+          <Pressable style={styles.fullscreenBackground} onPress={closeFullScreen}>
+            <Image
+              source={{ uri: fullscreenPhoto }}
+              style={styles.fullscreenImage}
+              resizeMode="contain"
+            />
+          </Pressable>
+          <TouchableOpacity
+            style={styles.fullscreenCloseButton}
+            onPress={closeFullScreen}
+          >
+            <Ionicons name="close-circle" size={38} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -272,6 +452,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     padding: 10,
     borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   locationButtonText: {
     color: '#fff',
@@ -291,14 +473,33 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 8,
   },
+  photoWithActions: {
+    position: 'relative',
+    marginRight: 8,
+    marginBottom: 8,
+  },
   photo: {
     width: 80,
     height: 80,
-    marginRight: 8,
-    marginBottom: 8,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#ddd',
+  },
+  photoActions: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    alignItems: 'center',
+  },
+  actionButton: {
+    marginLeft: 2,
+    marginRight: 2,
+    padding: 2,
   },
   addPhotoButton: {
     width: 80,
@@ -316,6 +517,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     paddingVertical: 15,
     borderRadius: 8,
+    marginBottom: 30,
   },
   submitButtonText: {
     color: 'white',
@@ -327,5 +529,32 @@ const styles = StyleSheet.create({
     color: 'red',
     marginTop: 10,
     textAlign: 'center',
+  },
+  fullscreenContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(10,10,10,0.97)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenBackground: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: '96%',
+    height: '90%',
+    borderRadius: 8,
+    alignSelf: 'center',
+    backgroundColor: '#111',
+  },
+  fullscreenCloseButton: {
+    position: 'absolute',
+    top: 40,
+    right: 25,
+    zIndex: 3,
+    backgroundColor: 'rgba(0,0,0,0.40)',
+    borderRadius: 24,
   },
 });
