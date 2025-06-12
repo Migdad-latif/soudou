@@ -1,43 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Button, FlatList, ActivityIndicator } from 'react-native'; // Added FlatList, ActivityIndicator
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
-const API_BASE_URL = 'http://192.168.1.214:3000/api';
+// Card width for all cards
+const CARD_WIDTH = '92%';
+
+// SectionCard component for APP SETTINGS, SUPPORT, LEGAL
+function SectionCard({ header, children }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionHeader}>{header}</Text>
+      {children}
+    </View>
+  );
+}
+
+// Welcome card for logged-in user
+function LoggedInCard({ user, onLogout, onAddProperty }) {
+  return (
+    <View style={styles.loggedInCard}>
+      <Text style={styles.loggedInHeader}>Welcome, {user.name}!</Text>
+      <Text style={styles.loggedInText}>Phone: {user.phoneNumber}</Text>
+      {user.email && <Text style={styles.loggedInText}>Email: {user.email}</Text>}
+      <Text style={styles.loggedInText}>Role: {user.role}</Text>
+      {user.role === 'agent' && (
+        <TouchableOpacity style={styles.addPropertyButton} onPress={onAddProperty}>
+          <Text style={styles.addPropertyButtonText}>Add New Property</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+        <Text style={styles.logoutButtonText}>Log Out</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// Card for not logged-in user
+function SignInCard({ onSignIn, onRegister }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>Sign In</Text>
+      <Text style={styles.cardDescription}>
+        Save properties. Save searches. And set up alerts for when something new hits the market.
+      </Text>
+      <TouchableOpacity style={styles.signInButton} onPress={onSignIn}>
+        <Text style={styles.signInButtonText}>Sign In</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onRegister}>
+        <Text style={styles.createAccountLink}>Create an account</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function AccountScreen() {
   const navigation = useNavigation();
-  const { user, token, logout, isLoading: authLoading } = useAuth();
-
-  const [agentProperties, setAgentProperties] = useState([]);
-  const [propertiesLoading, setPropertiesLoading] = useState(false);
-  const [propertiesError, setPropertiesError] = useState(null);
-
-  useEffect(() => {
-    const fetchAgentProperties = async () => {
-      if (!user || user.role !== 'agent' || !token) {
-        setAgentProperties([]);
-        return;
-      }
-
-      setPropertiesLoading(true);
-      setPropertiesError(null);
-      try {
-        const headers = { 'Authorization': `Bearer ${token}` };
-        const response = await axios.get(`${API_BASE_URL}/properties/myproperties`, { headers });
-        setAgentProperties(response.data.data);
-      } catch (err) {
-        console.error("Error fetching agent properties:", err);
-        setPropertiesError('Failed to load your properties.');
-      } finally {
-        setPropertiesLoading(false);
-      }
-    };
-
-    fetchAgentProperties();
-  }, [user, token]);
-
+  const { user, logout, isLoading: authLoading } = useAuth();
 
   const handleLogout = async () => {
     const result = await logout();
@@ -61,98 +80,60 @@ export default function AccountScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
+  const ListHeader = () => (
+    <View style={styles.listHeaderContainer}>
       <Text style={styles.header}>Account</Text>
-
       {user ? (
-        <View style={styles.loggedInCard}>
-          <Text style={styles.loggedInHeader}>Welcome, {user.name}!</Text>
-          <Text style={styles.loggedInText}>Phone: {user.phoneNumber}</Text>
-          {user.email && <Text style={styles.loggedInText}>Email: {user.email}</Text>}
-          <Text style={styles.loggedInText}>Role: {user.role}</Text>
-
-          {user.role === 'agent' && (
-            <View style={styles.agentDashboardSection}>
-              <Text style={styles.sectionHeader}>Your Properties</Text>
-              <TouchableOpacity style={styles.addPropertyButton} onPress={handleAddPropertyPress}>
-                <Text style={styles.addPropertyButtonText}>Add New Property</Text>
-              </TouchableOpacity>
-
-              {propertiesLoading ? (
-                <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 10 }} />
-              ) : propertiesError ? (
-                <Text style={styles.errorText}>{propertiesError}</Text>
-              ) : agentProperties.length > 0 ? (
-                <FlatList
-                  data={agentProperties}
-                  keyExtractor={(item) => item._id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.agentPropertyCard} onPress={() => navigation.navigate('HomeTab', { screen: 'PropertyDetails', params: { propertyId: item._id } })}>
-                      <Text style={styles.agentPropertyTitle}>{item.title}</Text>
-                      <Text style={styles.agentPropertyLocation}>{item.location}</Text>
-                    </TouchableOpacity>
-                  )}
-                  style={styles.agentPropertiesList}
-                  showsVerticalScrollIndicator={false}
-                />
-              ) : (
-                <Text style={styles.noPropertiesText}>You haven't added any properties yet.</Text>
-              )}
-            </View>
-          )}
-
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
+        <LoggedInCard
+          user={user}
+          onLogout={handleLogout}
+          onAddProperty={handleAddPropertyPress}
+        />
       ) : (
-        <View style={styles.card}>
-          <Text style={styles.cardHeader}>Sign In</Text>
-          <Text style={styles.cardDescription}>
-            Save properties. Save searches. And set up alerts for when something new hits the market.
-          </Text>
-          <TouchableOpacity style={styles.signInButton} onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.signInButtonText}>Sign In</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.createAccountLink}>Create an account</Text>
-          </TouchableOpacity>
-        </View>
+        <SignInCard
+          onSignIn={() => navigation.navigate('Login')}
+          onRegister={() => navigation.navigate('Register')}
+        />
       )}
 
-      {/* APP SETTINGS */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>APP SETTINGS</Text>
+      <SectionCard header="APP SETTINGS">
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Privacy settings')}>
           <Text style={styles.optionText}>Privacy settings</Text>
         </TouchableOpacity>
-      </View>
+      </SectionCard>
 
-      {/* SUPPORT */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>SUPPORT</Text>
+      <SectionCard header="SUPPORT">
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Suggest an improvement')}>
           <Text style={styles.optionText}>Suggest an improvement</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('FAQs')}>
           <Text style={styles.optionText}>FAQs</Text>
         </TouchableOpacity>
-      </View>
+      </SectionCard>
 
-      {/* LEGAL */}
-      <View style={styles.section}>
-        <Text style={styles.sectionHeader}>LEGAL</Text>
+      <SectionCard header="LEGAL">
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Terms of use')}>
           <Text style={styles.optionText}>Terms of use</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.optionButton} onPress={() => console.log('Privacy policy')}>
           <Text style={styles.optionText}>Privacy policy</Text>
         </TouchableOpacity>
-      </View>
+      </SectionCard>
 
       <Text style={styles.appVersion}>App version 1.0.0</Text>
     </View>
+  );
+
+  return (
+    <FlatList
+      ListHeaderComponent={ListHeader}
+      data={[]}
+      keyExtractor={(item) => item._id}
+      renderItem={null}
+      contentContainerStyle={styles.flatListContentContainer}
+      showsVerticalScrollIndicator={false}
+      style={styles.container}
+    />
   );
 }
 
@@ -160,7 +141,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  flatListContentContainer: {
     paddingTop: 50,
+    paddingBottom: 20,
+    // Do not center align items, left align for consistent card edge
+  },
+  listHeaderContainer: {
+    width: '100%',
     alignItems: 'center',
   },
   center: {
@@ -179,10 +167,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 8,
     padding: 20,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    width: '90%',
-    alignItems: 'center',
+    marginHorizontal: 0,
+    marginBottom: 10,
+    width: CARD_WIDTH,
+    alignItems: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -208,7 +196,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#00c3a5',
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
   },
   signInButtonText: {
     color: '#fff',
@@ -225,9 +212,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 8,
     padding: 20,
-    marginHorizontal: 20,
+    marginHorizontal: 0,
     marginBottom: 20,
-    width: '90%',
+    width: CARD_WIDTH,
     alignItems: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -247,7 +234,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   logoutButton: {
-    marginTop: 20,
+    marginTop: 15,
     width: '100%',
     padding: 15,
     backgroundColor: '#dc3545',
@@ -272,48 +259,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  agentDashboardSection: {
-    width: '100%',
-    marginTop: 20,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  agentPropertiesList: {
-    maxHeight: 200,
-    width: '100%',
-    marginTop: 10,
-  },
-  agentPropertyCard: {
-    backgroundColor: '#f9f9f9',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  agentPropertyTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  agentPropertyLocation: {
-    fontSize: 14,
-    color: '#666',
-  },
-  noPropertiesText: {
-    fontSize: 14,
-    color: '#888',
-    textAlign: 'center',
-    marginTop: 10,
-  },
   section: {
-    width: '90%',
+    width: CARD_WIDTH,
     backgroundColor: '#fff',
     borderRadius: 8,
-    padding: 15,
-    marginHorizontal: 20,
+    padding: 20,
+    marginHorizontal: 0,
     marginBottom: 15,
+    alignItems: 'flex-start',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -331,6 +284,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    width: '100%',
   },
   optionText: {
     fontSize: 16,
@@ -341,5 +295,5 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 20,
     marginBottom: 10,
-  }
+  },
 });
