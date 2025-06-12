@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
-  FlatList,
   Modal,
   TextInput,
   Button,
+  ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
@@ -17,85 +17,21 @@ import axios from 'axios';
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const CARD_WIDTH = '92%';
 
-// ProfileCard: user can update personal details (now opens a modal)
-function ProfileCard({ user, setUser }) {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editName, setEditName] = useState(user?.name || '');
-  const [editEmail, setEditEmail] = useState(user?.email || '');
-  const [saving, setSaving] = useState(false);
-
-  const handleOpenModal = () => {
-    setEditName(user?.name || '');
-    setEditEmail(user?.email || '');
-    setModalVisible(true);
-  };
-
-  // Save handler (calls API and updates context)
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const response = await axios.put(
-        `${API_BASE_URL}/users/me`,
-        { name: editName, email: editEmail }
-      );
-      setUser(response.data.user); // update context with the returned user
-      setModalVisible(false);
-      alert("Profile updated!");
-    } catch (err) {
-      alert("Failed to update profile. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function ProfileCard({ user, onEdit }) {
   return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>Profile</Text>
-        <Text style={styles.cardLabel}>Name</Text>
-        <Text style={styles.cardValue}>{user?.name || '-'}</Text>
-        <Text style={styles.cardLabel}>Email</Text>
-        <Text style={styles.cardValue}>{user?.email || '-'}</Text>
-        <TouchableOpacity style={styles.editButton} onPress={handleOpenModal}>
-          <Text style={styles.editButtonText}>Edit Profile</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Profile</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Name"
-            />
-            <TextInput
-              style={styles.modalInput}
-              value={editEmail}
-              onChangeText={setEditEmail}
-              placeholder="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <View style={styles.modalBtnRow}>
-              <Button title="Cancel" onPress={() => setModalVisible(false)} />
-              <Button title={saving ? "Saving..." : "Save"} onPress={handleSave} disabled={saving} />
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </>
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>Profile</Text>
+      <Text style={styles.cardLabel}>Name</Text>
+      <Text style={styles.cardValue}>{user?.name || '-'}</Text>
+      <Text style={styles.cardLabel}>Email</Text>
+      <Text style={styles.cardValue}>{user?.email || '-'}</Text>
+      <TouchableOpacity style={styles.editButton} onPress={onEdit}>
+        <Text style={styles.editButtonText}>Edit Profile</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
-// AccountSettingsCard: change phone, password, delete account
 function AccountSettingsCard({ onChangePhone, onChangePassword, onDeleteAccount }) {
   return (
     <View style={styles.card}>
@@ -113,7 +49,6 @@ function AccountSettingsCard({ onChangePhone, onChangePassword, onDeleteAccount 
   );
 }
 
-// Card for not logged-in user
 function SignInCard({ onSignIn, onRegister }) {
   return (
     <View style={styles.card}>
@@ -135,7 +70,37 @@ export default function AccountScreen() {
   const navigation = useNavigation();
   const { user, setUser, logout, isLoading: authLoading } = useAuth();
 
-  // Handlers for account management
+  // Modal and field state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Show modal pre-filled with user info
+  const handleOpenModal = () => {
+    setEditName(user?.name || '');
+    setEditEmail(user?.email || '');
+    setModalVisible(true);
+  };
+
+  // Save handler
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const response = await axios.put(
+        `${API_BASE_URL}/auth/me`, // <-- Adjust endpoint as needed
+        { name: editName, email: editEmail }
+      );
+      setUser(response.data.user);        // Update context/state
+      setModalVisible(false);             // Close modal
+    } catch (err) {
+      alert("Failed to update profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Account management handlers
   const handleChangePhone = () => navigation.navigate('ChangePhone');
   const handleChangePassword = () => navigation.navigate('ChangePassword');
   const handleDeleteAccount = () => navigation.navigate('DeleteAccount');
@@ -157,13 +122,13 @@ export default function AccountScreen() {
     );
   }
 
-  // Render the main content (excluding the log out button)
+  // Main content (header)
   const ListHeader = () => (
     <View style={styles.listHeaderContainer}>
       <Text style={styles.header}>Account</Text>
       {user ? (
         <>
-          <ProfileCard user={user} setUser={setUser} />
+          <ProfileCard user={user} onEdit={handleOpenModal} />
           <AccountSettingsCard
             onChangePhone={handleChangePhone}
             onChangePassword={handleChangePassword}
@@ -208,7 +173,7 @@ export default function AccountScreen() {
     </View>
   );
 
-  // Show the logout button at the very bottom if the user is logged in
+  // Footer with logout button if logged in
   const ListFooter = () =>
     user ? (
       <View style={styles.logoutFooter}>
@@ -219,16 +184,49 @@ export default function AccountScreen() {
     ) : null;
 
   return (
-    <FlatList
-      ListHeaderComponent={ListHeader}
-      ListFooterComponent={ListFooter}
-      data={[]} // No row items, only header and footer content
-      keyExtractor={(item) => item._id}
-      renderItem={null}
-      contentContainerStyle={styles.flatListContentContainer}
-      showsVerticalScrollIndicator={false}
-      style={styles.container}
-    />
+    <View style={styles.container}>
+      <FlatList
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        data={[]}
+        keyExtractor={(_, index) => String(index)}
+        renderItem={null}
+        contentContainerStyle={styles.flatListContentContainer}
+        showsVerticalScrollIndicator={false}
+      />
+
+      {/* Place modal OUTSIDE the FlatList to prevent flickers */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Name"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={editEmail}
+              onChangeText={setEditEmail}
+              placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={styles.modalBtnRow}>
+              <Button title="Cancel" onPress={() => setModalVisible(false)} />
+              <Button title={saving ? "Saving..." : "Save"} onPress={handleSave} disabled={saving} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -374,7 +372,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',

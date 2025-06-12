@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "cloudinary": "^2.6.1",
+    "expo-file-system": "^18.1.10",
     "multer": "^2.0.1"
   }
 }

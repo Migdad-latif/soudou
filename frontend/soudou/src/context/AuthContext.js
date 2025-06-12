@@ -2,7 +2,6 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
-// Removed: import { useNavigation } from '@react-navigation/native'; // No longer needed here
 
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
 
@@ -10,8 +9,7 @@ const AuthContext = createContext();
 
 export const useAuth = () => useContext(AuthContext);
 
-// AuthProvider now accepts navigationRef as a prop
-export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT navigationRef PROP HERE
+export const AuthProvider = ({ children, navigationRef }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,9 +22,15 @@ export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT nav
         if (storedToken) {
           setToken(storedToken);
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          const response = await axios.get(`${API_BASE_URL}/auth/me`);
+          setUser(response.data.data);
         }
       } catch (e) {
-        console.error("Failed to load token from SecureStore:", e);
+        console.error("Failed to load token or fetch user from SecureStore/backend:", e);
+        await SecureStore.deleteItemAsync('userToken');
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['Authorization'];
       } finally {
         setIsLoading(false);
       }
@@ -92,11 +96,10 @@ export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT nav
       setToken(null);
       setUser(null);
       delete axios.defaults.headers.common['Authorization'];
-      // Use the navigationRef to navigate after logout
-      if (navigationRef.current) { // Check if ref is available before navigating
+      if (navigationRef.current) {
         navigationRef.current.navigate('HomeTab');
       } else {
-        console.warn("Navigation ref not available during logout, cannot navigate.");
+        console.warn("Navigation ref not available during logout.");
       }
       console.log("User logged out.");
       return { success: true };
@@ -106,6 +109,25 @@ export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT nav
       return { success: false, error: "Logout failed." };
     }
   };
+
+  // NEW: updatePhoneNumber function to be exposed via context
+  const updatePhoneNumber = async (newPhoneNumber, currentPassword) => {
+    try {
+      const headers = { 'Authorization': `Bearer ${token}` };
+      const response = await axios.put(`${API_BASE_URL}/auth/change-phone`, { currentPassword, newPhoneNumber }, { headers });
+      
+      // Update user and token in local state (token might change if phone number is in payload)
+      await SecureStore.setItemAsync('userToken', response.data.token); // Update token in secure store
+      setToken(response.data.token);
+      setUser(response.data.user); // Update user object
+      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`; // Update default header
+      return { success: true, message: response.data.message };
+    } catch (err) {
+      console.error("AuthContext updatePhoneNumber Error:", err.response?.data?.error || err.message);
+      return { success: false, error: err.response?.data?.error || "Failed to update phone number." };
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -117,7 +139,8 @@ export const AuthProvider = ({ children, navigationRef }) => { // <-- ACCEPT nav
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, authError, login, register, logout, isLoading }}>
+    // Add updatePhoneNumber to the context value
+    <AuthContext.Provider value={{ user, setUser, token, authError, login, register, logout, isLoading, updatePhoneNumber }}>
       {children}
     </AuthContext.Provider>
   );

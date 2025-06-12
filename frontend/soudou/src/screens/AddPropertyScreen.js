@@ -6,6 +6,7 @@ import axios from 'axios';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
@@ -31,13 +32,10 @@ export default function AddPropertyScreen() {
   });
   const [gpsCoords, setGpsCoords] = useState({ latitude: null, longitude: null });
   const [locationMethod, setLocationMethod] = useState('typed');
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState([]); // [{ uri }]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
-
-  // For aborting image upload if navigating away
-  const uploadAbortController = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -49,12 +47,9 @@ export default function AddPropertyScreen() {
       let { status: medLibStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (medLibStatus !== 'granted') Alert.alert('Permission Denied', 'Media library permission is needed.');
     })();
-    // Cancel upload on unmount/navigation
-    return () => {
-      if (uploadAbortController.current) {
-        uploadAbortController.current.abort();
-      }
-    };
+
+    // On unmount, clear selected images
+    return () => setPhotos([]);
   }, []);
 
   // Ensure loading is false on mount
@@ -96,9 +91,9 @@ export default function AddPropertyScreen() {
   }, []);
 
   const selectOrTakePhoto = () => {
-    if (photos.length >= MAX_PHOTOS_ALLOWED) { 
-      Alert.alert('Photo Limit Reached', `You can only upload up to ${MAX_PHOTOS_ALLOWED} photos.`); 
-      return; 
+    if (photos.length >= MAX_PHOTOS_ALLOWED) {
+      Alert.alert('Photo Limit Reached', `You can only upload up to ${MAX_PHOTOS_ALLOWED} photos.`);
+      return;
     }
     Alert.alert('Add Photo', 'Choose an option', [
       { text: 'Select from Gallery', onPress: () => handleImagePick(false) },
@@ -107,20 +102,10 @@ export default function AddPropertyScreen() {
     ], { cancelable: true });
   };
 
-  const getCompatibleMediaTypes = () => {
-    // Backwards-compatible mediaTypes for all expo-image-picker versions
-    if (ImagePicker.MediaType && ImagePicker.MediaType.IMAGE) {
-      return ImagePicker.MediaType.IMAGE;
-    } else if (ImagePicker.MediaTypeOptions && ImagePicker.MediaTypeOptions.Images) {
-      return ImagePicker.MediaTypeOptions.Images;
-    }
-    return 'Images';
-  };
-
   const handleImagePick = async (useCamera) => {
     try {
       const options = {
-        mediaTypes: getCompatibleMediaTypes(),
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.7,
@@ -136,7 +121,6 @@ export default function AddPropertyScreen() {
         console.log('User cancelled image picker/camera.');
       } else if (result.assets && result.assets.length > 0) {
         setPhotos((prev) => [...prev, { uri: result.assets[0].uri }]);
-        await uploadSelectedImage(result.assets[0]);
       } else {
         Alert.alert('Error', `Could not ${useCamera ? 'take photo' : 'select image'}.`);
       }
@@ -146,55 +130,45 @@ export default function AddPropertyScreen() {
     }
   };
 
-  const uploadSelectedImage = async (imageAsset) => {
-    setLoading(true); setError(null);
-    try {
-      const controller = new AbortController();
-      uploadAbortController.current = controller;
+  // NEW: Upload all photos when user presses Add Property
+  const uploadAllPhotos = async () => {
+    const uploadedPhotoUrls = [];
+    for (const photo of photos) {
+      let localUri = photo.uri;
+      let filename = localUri.split('/').pop() || `photo_${Date.now()}.jpg`;
+      let type = 'image/jpeg';
+      if (Platform.OS === 'android' && localUri.startsWith('content://')) {
+        const newPath = FileSystem.cacheDirectory + filename;
+        await FileSystem.copyAsync({ from: localUri, to: newPath });
+        localUri = newPath;
+      }
       const formData = new FormData();
       formData.append('image', {
-        uri: Platform.OS === 'android' ? imageAsset.uri : imageAsset.uri.replace('file://', ''),
-        type: imageAsset.mimeType || 'image/jpeg',
-        name: imageAsset.fileName || `photo_${Date.now()}.jpg`,
+        uri: localUri,
+        name: filename,
+        type: type,
       });
-
       const headers = {
         'Content-Type': 'multipart/form-data',
         ...(token && { 'Authorization': `Bearer ${token}` }),
       };
-
-      const response = await axios.post(
-        UPLOAD_API_URL,
-        formData,
-        { headers, signal: controller.signal, timeout: 15000 }
-      );
-
-      if (response.status === 200 && response.data?.data?.url) {
-        setPhotos((prev) =>
-          prev.map((photo) =>
-            photo.uri === imageAsset.uri && !photo.serverUrl
-              ? { ...photo, serverUrl: response.data.data.url }
-              : photo
-          )
+      try {
+        const response = await axios.post(
+          UPLOAD_API_URL,
+          formData,
+          { headers, timeout: 15000 }
         );
-        Alert.alert('Success', 'Image uploaded successfully!');
-      } else {
-        Alert.alert('Error', `Image upload failed: ${response.data?.error || 'Please check the server logs.'}`);
-        console.error('Upload error (backend response):', response.data);
+        if (response.status === 200 && response.data?.data?.url) {
+          uploadedPhotoUrls.push(response.data.data.url);
+        } else {
+          throw new Error(response.data?.error || 'Upload failed');
+        }
+      } catch (err) {
+        console.error('Upload error:', err);
+        throw err; // Stop upload and show error to user
       }
-    } catch (uploadError) {
-      if (uploadError.name === "CanceledError" || uploadError.name === "AbortError") {
-        // Don't alert on cancelled uploads
-        console.log("Upload cancelled due to unmount/navigation");
-      } else {
-        console.error('Upload failed (Axios error):', uploadError);
-        const errorMessage = uploadError.response?.data?.error || uploadError.message || 'Network error or server unreachable.';
-        Alert.alert('Error', `Failed to upload image: ${errorMessage}`);
-      }
-    } finally {
-      setLoading(false);
-      uploadAbortController.current = null;
     }
+    return uploadedPhotoUrls;
   };
 
   const handleDeletePhoto = (index) => {
@@ -215,7 +189,7 @@ export default function AddPropertyScreen() {
   const handleEditPhoto = async (index) => {
     try {
       const options = {
-        mediaTypes: getCompatibleMediaTypes(),
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.7,
@@ -229,7 +203,6 @@ export default function AddPropertyScreen() {
             i === index ? { uri: newAsset.uri } : photo
           )
         );
-        await uploadSelectedImage(newAsset);
       }
     } catch (err) {
       console.error('Image edit error:', err);
@@ -250,14 +223,35 @@ export default function AddPropertyScreen() {
 
     setLoading(true); setError(null);
     try {
-      const photosToSend = photos.map((p) => p.serverUrl || p.uri);
-      const propertyData = { ...form, price: Number(form.price), bedrooms: form.bedrooms === '8+' ? 8 : Number(form.bedrooms), bathrooms: form.bathrooms === '8+' ? 8 : Number(form.bathrooms), livingRooms: Number(form.livingRooms), photos: photosToSend, agent: user.id, };
-      if (locationMethod === 'gps' && gpsCoords.latitude && gpsCoords.longitude) { propertyData.coordinates = { type: 'Point', coordinates: [gpsCoords.longitude, gpsCoords.latitude], }; }
+      // UPLOAD ALL PHOTOS HERE
+      const photoUrls = await uploadAllPhotos();
+
+      const propertyData = { 
+        ...form, 
+        price: Number(form.price), 
+        bedrooms: form.bedrooms === '8+' ? 8 : Number(form.bedrooms), 
+        bathrooms: form.bathrooms === '8+' ? 8 : Number(form.bathrooms), 
+        livingRooms: Number(form.livingRooms), 
+        photos: photoUrls, 
+        agent: user.id, 
+      };
+      if (locationMethod === 'gps' && gpsCoords.latitude && gpsCoords.longitude) { 
+        propertyData.coordinates = { type: 'Point', coordinates: [gpsCoords.longitude, gpsCoords.latitude], }; 
+      }
       const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, };
       const response = await axios.post(API_URL, propertyData, { headers });
 
-      if (response.status === 201) { Alert.alert('Success', 'Property added successfully!'); clearForm(); promptAddAnother(); } else { setError(response.data.error || 'Failed to add property.'); }
-    } catch (err) { console.error('Add property error:', err); setError('Failed to add property. Please try again.'); } finally { setLoading(false); }
+      if (response.status === 201) { 
+        Alert.alert('Success', 'Property added successfully!'); 
+        clearForm(); 
+        promptAddAnother(); 
+      } else { 
+        setError(response.data.error || 'Failed to add property.'); 
+      }
+    } catch (err) { 
+      console.error('Add property error:', err); 
+      setError('Failed to add property. Please try again.'); 
+    } finally { setLoading(false); }
   };
 
   const clearForm = () => {
@@ -272,7 +266,7 @@ export default function AddPropertyScreen() {
   };
 
   // Fullscreen modal view
-  const openFullScreen = (photo) => setFullscreenPhoto(photo.uri || photo.serverUrl);
+  const openFullScreen = (photo) => setFullscreenPhoto(photo.uri);
   const closeFullScreen = () => setFullscreenPhoto(null);
 
   return (
@@ -307,7 +301,7 @@ export default function AddPropertyScreen() {
           <View key={idx} style={styles.photoWithActions}>
             <Pressable onPress={() => openFullScreen(photo)}>
               <Image
-                source={{ uri: photo.uri || photo.serverUrl }}
+                source={{ uri: photo.uri }}
                 style={styles.photo}
                 resizeMode="cover"
               />

@@ -1,12 +1,9 @@
 const express = require('express');
 const User = require('../models/User');
-const Property = require('../models/Property'); // <-- NEW: Import Property model
-const { protect } = require('../middleware/authMiddleware'); // Import protect middleware
-const asyncHandler = require('express-async-handler'); // Import asyncHandler
-
 const router = express.Router();
+const { protect } = require('../middleware/authMiddleware'); // Import protect middleware
 
-// Helper function to send token in response (already exists)
+// Helper function to send token in response
 const sendTokenResponse = (user, statusCode, res) => {
   const token = user.getSignedJwtToken();
 
@@ -37,109 +34,210 @@ const sendTokenResponse = (user, statusCode, res) => {
 
 
 // @route   POST /api/auth/register
-// @desc    Register user (already implemented)
-// @access  Public
-router.post('/register', asyncHandler(async (req, res) => { // Use asyncHandler
+router.post('/register', async (req, res) => {
   const { name, phoneNumber, email, password, role } = req.body;
 
-  const user = await User.create({
-    name, phoneNumber, ...(email && { email }), password, role
-  });
-
-  sendTokenResponse(user, 201, res);
-
-})); // Removed manual try-catch as asyncHandler handles it
-
+  try {
+    const user = await User.create({
+      name, phoneNumber, ...(email && { email }), password, role
+    });
+    sendTokenResponse(user, 201, res);
+  } catch (err) {
+    console.error("Register API Error:", err);
+    if (err.code === 11000) { // Duplicate key error
+      const field = Object.keys(err.keyValue)[0];
+      let message = `A user with this ${field} already exists.`;
+      return res.status(400).json({ success: false, error: message });
+    }
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({ success: false, error: messages });
+    }
+    res.status(500).json({ success: false, error: 'Server Error during registration' });
+  }
+});
 
 // @route   POST /api/auth/login
-// @desc    Login user (already implemented)
-// @access  Public
-router.post('/login', asyncHandler(async (req, res) => { // Use asyncHandler
+router.post('/login', async (req, res) => {
   const { phoneNumber, password } = req.body;
 
   if (!phoneNumber || !password) {
-    res.status(400); // Use Express error handling
-    throw new Error('Please enter a phone number and password');
+    return res.status(400).json({ success: false, error: 'Please enter a phone number and password' });
   }
 
-  const user = await User.findOne({ phoneNumber }).select('+password');
+  try {
+    const user = await User.findOne({ phoneNumber }).select('+password');
 
-  if (!user) { res.status(401); throw new Error('Invalid credentials'); }
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
 
-  const isMatch = await user.matchPassword(password);
+    const isMatch = await user.matchPassword(password);
 
-  if (!isMatch) { res.status(401); throw new Error('Invalid credentials'); }
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
 
-  sendTokenResponse(user, 200, res);
+    sendTokenResponse(user, 200, res);
 
-})); // Removed manual try-catch as asyncHandler handles it
+  } catch (err) {
+    console.error("Login API Error:", err);
+    res.status(500).json({ success: false, error: 'Server Error during login' });
+  }
+});
 
 
 // @route   GET /api/auth/me
-// @desc    Get current logged in user (already implemented)
+// @desc    Get current logged in user
 // @access  Private
-router.get('/me', protect, (req, res) => {
-  res.status(200).json({ success: true, data: req.user });
+router.get('/me', protect, async (req, res) => {
+  const user = await User.findById(req.user.id);
+  res.status(200).json({ success: true, data: user });
 });
 
-// --- NEW ROUTES FOR SAVED PROPERTIES ---
+// @route   PUT /api/auth/me
+// @desc    Update profile (name, email)
+// @access  Private
+router.put('/me', protect, async (req, res) => {
+  const { name, email } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id); // Get user from DB using ID from token
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // Update only allowed fields
+    if (name) user.name = name;
+    if (email) user.email = email;
+
+    await user.save({ validateBeforeSave: true }); // Save updated user, run validation
+
+    // Respond with updated user data (important for frontend context)
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: { // Send back the updated user object
+        id: user._id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (err) {
+    console.error("Update Profile API Error:", err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({ success: false, error: messages });
+    }
+    res.status(500).json({ success: false, error: 'Server Error during profile update' });
+  }
+});
+
+
+// @route   PUT /api/auth/change-phone
+// @desc    Change user's phone number
+// @access  Private
+router.put('/change-phone', protect, async (req, res) => {
+  const { currentPassword, newPhoneNumber } = req.body;
+
+  if (!currentPassword || !newPhoneNumber) {
+    return res.status(400).json({ success: false, error: 'Current password and new phone number are required' });
+  }
+
+  try {
+    // Get user with password selected
+    const user = await User.findById(req.user.id).select('+password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // Check if current password matches
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Incorrect current password' });
+    }
+
+    // Check if new phone number is already taken
+    const existingUserWithPhone = await User.findOne({ phoneNumber: newPhoneNumber });
+    if (existingUserWithPhone && existingUserWithPhone._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ success: false, error: 'This phone number is already registered' });
+    }
+
+    user.phoneNumber = newPhoneNumber;
+    await user.save({ validateBeforeSave: true }); // Validate on save
+
+    // Re-send token with updated phone number in payload
+    sendTokenResponse(user, 200, res);
+
+  } catch (err) {
+    console.error("Change Phone API Error:", err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({ success: false, error: messages });
+    }
+    if (err.code === 11000) { // Duplicate key error
+      const field = Object.keys(err.keyValue)[0];
+      let message = `A user with this ${field} already exists.`;
+      return res.status(400).json({ success: false, error: message });
+    }
+    res.status(500).json({ success: false, error: 'Server Error during phone number update' });
+  }
+});
+
 
 // @route   POST /api/auth/save-property/:propertyId
-// @desc    Toggle saving/unsaving a property for the logged-in user
+// @desc    Save/Unsave a property to user's favorites
 // @access  Private
-router.post('/save-property/:propertyId', protect, asyncHandler(async (req, res) => {
-  const propertyId = req.params.propertyId;
-  const userId = req.user.id;
+router.post('/save-property/:propertyId', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const propertyId = req.params.propertyId;
 
-  const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
 
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
+    const isSaved = user.savedProperties.includes(propertyId);
+    let action;
 
-  const property = await Property.findById(propertyId);
-  if (!property) {
-    res.status(404);
-    throw new Error('Property not found');
-  }
+    if (isSaved) {
+      user.savedProperties = user.savedProperties.filter(id => id.toString() !== propertyId);
+      action = 'unsaved';
+    } else {
+      user.savedProperties.push(propertyId);
+      action = 'saved';
+    }
 
-  // Check if property is already saved
-  const isSaved = user.savedProperties.includes(propertyId);
-
-  if (isSaved) {
-    // Unsave the property
-    user.savedProperties = user.savedProperties.filter(
-      (propId) => propId.toString() !== propertyId
-    );
     await user.save();
-    res.status(200).json({ success: true, message: 'Property unsaved', action: 'unsaved' });
-  } else {
-    // Save the property
-    user.savedProperties.push(propertyId);
-    await user.save();
-    res.status(200).json({ success: true, message: 'Property saved', action: 'saved' });
+    res.status(200).json({ success: true, action: action, data: user.savedProperties });
+  } catch (err) {
+    console.error("Error saving/unsaving property:", err);
+    res.status(500).json({ success: false, error: 'Server Error' });
   }
-}));
+});
 
 // @route   GET /api/auth/saved-properties
-// @desc    Get all properties saved by the logged-in user
+// @desc    Get user's saved properties (populated)
 // @access  Private
-router.get('/saved-properties', protect, asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user.id).populate('savedProperties'); // Populate property details
+router.get('/saved-properties', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate('savedProperties');
 
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    res.status(200).json({ success: true, count: user.savedProperties.length, data: user.savedProperties });
+  } catch (err) {
+    console.error("Error fetching saved properties:", err);
+    res.status(500).json({ success: false, error: 'Server Error' });
   }
+});
 
-  res.status(200).json({
-    success: true,
-    count: user.savedProperties.length,
-    data: user.savedProperties, // This will contain populated property objects
-  });
-}));
-
-// --- END NEW ROUTES ---
 
 module.exports = router;

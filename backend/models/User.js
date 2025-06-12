@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // For password hashing/comparison
+const jwt = require('jsonwebtoken'); // For generating JWT tokens
 
 const UserSchema = new mongoose.Schema({
   name: {
@@ -9,23 +9,23 @@ const UserSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    unique: false,
+    unique: false, // Email is not required to be unique
     match: [
-      /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
+      /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
       'Please add a valid email'
     ],
-    required: false
+    required: false // Email is optional
   },
   phoneNumber: {
     type: String,
     required: [true, 'Please add a phone number'],
-    unique: true,
+    unique: true, // Phone number must be unique for login
   },
   password: {
     type: String,
     required: [true, 'Please add a password'],
     minlength: 6,
-    select: false
+    select: false // Don't return password in queries by default
   },
   role: {
     type: String,
@@ -36,19 +36,16 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // --- NEW FIELD: savedProperties ---
-  savedProperties: [
-    {
-      type: mongoose.Schema.ObjectId,
-      ref: 'Property', // Reference to the Property model
-    },
-  ],
-  // --- END NEW FIELD ---
+  savedProperties: { // Array of property IDs for user favorites
+    type: [mongoose.Schema.ObjectId],
+    ref: 'Property',
+    default: []
+  }
 });
 
 // Encrypt password using bcrypt (pre-save hook)
 UserSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password')) { // Only hash if password is modified
     next();
   }
   const salt = await bcrypt.genSalt(10);
@@ -56,16 +53,19 @@ UserSchema.pre('save', async function(next) {
   next();
 });
 
-// Sign JWT and return (Instance method)
-UserSchema.methods.getSignedJwtToken = function() {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
-  });
-};
-
-// Match user entered password to hashed password in database (Instance method)
+// Match user entered password to hashed password in database
 UserSchema.methods.matchPassword = async function(enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Generate and return JWT token
+UserSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign({ id: this._id, role: this.role, phoneNumber: this.phoneNumber }, // Include phone number in payload
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRE
+    }
+  );
 };
 
 module.exports = mongoose.model('User', UserSchema);
