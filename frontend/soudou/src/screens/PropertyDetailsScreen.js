@@ -17,7 +17,7 @@ const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`;
 export default function PropertyDetailsScreen() {
   const route = useRoute();
   const { propertyId } = route.params;
-  const { user, token, language } = useAuth(); // <--- Use language if provided by your AuthContext
+  const { user, token, language } = useAuth();
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,12 +32,8 @@ export default function PropertyDetailsScreen() {
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
 
-  // Watch for language change to force rerender
   useEffect(() => {
-    // If using i18n-js
     const sub = i18n.onChange?.(() => setLang(i18n.locale));
-    // If you use a language from context, subscribe to it instead:
-    // setLang(language)
     return () => {
       if (sub && sub.remove) sub.remove();
     };
@@ -93,7 +89,6 @@ export default function PropertyDetailsScreen() {
       setError(i18n.t('noPropertyIdProvided') || 'No property ID provided. Please return to Home and try again.');
       setLoading(false);
     }
-    // Add lang as a dependency so screen re-renders on language change
   }, [propertyId, user, token, lang]);
 
   const handleToggleSave = async () => {
@@ -304,7 +299,13 @@ export default function PropertyDetailsScreen() {
             </View>
             <View style={styles.quickDetailItem}>
               <Ionicons name="home-outline" size={20} color="#333" />
-              <Text style={styles.quickDetailText}>{i18n.t(property.propertyType?.toLowerCase())}</Text>
+              <Text style={styles.quickDetailText}>
+                {Array.isArray(property.propertyType)
+                  ? property.propertyType.map(type => i18n.t(type.toLowerCase())).join(', ')
+                  : property.propertyType
+                    ? i18n.t(property.propertyType.toLowerCase())
+                    : ''}
+              </Text>
             </View>
             <View style={styles.quickDetailItem}>
               <Ionicons name="pricetag-outline" size={20} color="#333" />
@@ -337,7 +338,15 @@ export default function PropertyDetailsScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionHeader}>{i18n.t('keyFeatures') || 'Key Features / Details'}</Text>
-            <Text>- {i18n.t('propertyType') || 'Property Type'}: {i18n.t(property.propertyType?.toLowerCase())}</Text>
+            <Text>
+              - {i18n.t('propertyType') || 'Property Type'}: {
+                Array.isArray(property.propertyType)
+                  ? property.propertyType.map(type => i18n.t(type.toLowerCase())).join(', ')
+                  : property.propertyType
+                    ? i18n.t(property.propertyType.toLowerCase())
+                    : ''
+              }
+            </Text>
             <Text>
               - {i18n.t('listingType') || 'Listing Type'}: {getTranslatedListingType(property.listingType)}
             </Text>
