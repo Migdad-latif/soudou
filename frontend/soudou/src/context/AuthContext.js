@@ -17,18 +17,21 @@ export const AuthProvider = ({ children, navigationRef }) => {
 
   useEffect(() => {
     const loadStoredToken = async () => {
+      setIsLoading(true);
       try {
         const storedToken = await SecureStore.getItemAsync('userToken');
         if (storedToken) {
           setToken(storedToken);
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-          // Fetch user data after token is loaded to ensure 'user' object is complete
+          // Fetch user data after token is loaded
           const response = await axios.get(`${API_BASE_URL}/auth/me`);
-          setUser(response.data.data); // Set user data from backend, which includes user.id, role etc.
+          setUser(response.data.data);
+        } else {
+          setToken(null);
+          setUser(null);
+          delete axios.defaults.headers.common['Authorization'];
         }
       } catch (e) {
-        console.error("Failed to load token or fetch user from SecureStore/backend:", e);
-        // Clear token if user fetch fails (e.g., token expired/invalid)
         await SecureStore.deleteItemAsync('userToken');
         setToken(null);
         setUser(null);
@@ -44,16 +47,15 @@ export const AuthProvider = ({ children, navigationRef }) => {
     setAuthError(null);
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, { phoneNumber, password }); 
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, { phoneNumber, password });
       const { token: receivedToken, user: userData } = response.data;
 
       await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
-      setUser(userData); // Set user data from backend
+      setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
-      console.error("Login API Error:", err);
       const errorMsg = err.response?.data?.error || "Login failed. Please check your credentials.";
       setAuthError(errorMsg);
       setToken(null);
@@ -74,11 +76,10 @@ export const AuthProvider = ({ children, navigationRef }) => {
 
       await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
-      setUser(userData); // Set user data from backend
+      setUser(userData);
       axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
-      console.error("Register API Error:", err);
       const errorMsg = err.response?.data?.error || "Registration failed. Please try again.";
       setAuthError(errorMsg);
       setToken(null);
@@ -92,21 +93,15 @@ export const AuthProvider = ({ children, navigationRef }) => {
 
   const logout = async () => {
     try {
-      console.log("DEBUG (Logout): Attempting to delete userToken from SecureStore...");
       await SecureStore.deleteItemAsync('userToken');
-      console.log("DEBUG (Logout): userToken deleted successfully from SecureStore.");
       setToken(null);
       setUser(null);
       delete axios.defaults.headers.common['Authorization'];
-      if (navigationRef.current) {
+      if (navigationRef?.current) {
         navigationRef.current.navigate('HomeTab');
-      } else {
-        console.warn("Navigation ref not available during logout.");
       }
-      console.log("User logged out.");
       return { success: true };
     } catch (e) {
-      console.error("ERROR (Logout): Failed to delete token from SecureStore:", e);
       setAuthError("Logout failed.");
       return { success: false, error: "Logout failed." };
     }

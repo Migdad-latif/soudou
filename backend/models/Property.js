@@ -3,13 +3,11 @@ const mongoose = require('mongoose');
 const PropertySchema = new mongoose.Schema({
   title: {
     type: String,
-    required: [true, 'Please add a title for the property'],
-    trim: true,
-    maxlength: [100, 'Title can not be more than 100 characters']
+    required: [true, 'Please add a title']
   },
   description: {
     type: String,
-    required: [true, 'Please add a description']
+    required: false
   },
   price: {
     type: Number,
@@ -17,62 +15,58 @@ const PropertySchema = new mongoose.Schema({
   },
   currency: {
     type: String,
-    default: 'GNF' // Guinea Franc
+    default: "GNF"
   },
   propertyType: {
-    type: String,
-    enum: ['House', 'Apartment', 'Land', 'Commercial', 'Office'],
-    required: [true, 'Please select a property type']
+    type: [String],
+    required: [true, 'Please specify property type(s)'],
+    enum: ['House', 'Apartment', 'Land', 'Commercial', 'Office']
   },
   listingType: {
     type: String,
-    enum: ['For Sale', 'For Rent'],
-    required: [true, 'Please specify if property is for sale or rent']
+    required: [true, 'Please specify listing type'],
+    enum: ['For Sale', 'For Rent']
   },
   bedrooms: {
     type: Number,
-    min: 0,
     default: 0
   },
   bathrooms: {
     type: Number,
-    min: 0,
     default: 0
   },
   livingRooms: {
     type: Number,
-    min: 0,
     default: 0
   },
   contactName: {
     type: String,
-    required: [true, 'Please provide a contact name (your name or agency name)']
+    required: false
   },
   location: {
     type: String,
     required: [true, 'Please add a location']
   },
-  coordinates: {
-    type: {
-      type: String,
-      enum: ['Point'],
-    },
-    coordinates: {
-      type: [Number],
-      index: '2dsphere',
-      required: false
-    }
-  },
   photos: {
     type: [String],
     default: []
   },
-  agent: { // Define agent field as a reference to the User model
-    type: mongoose.Schema.ObjectId,
+  agent: {
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true // Property must have an associated agent
+    required: true
   },
-  isAvailable: { // Adding isAvailable based on previous user request
+  coordinates: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number] // [longitude, latitude]
+    }
+  },
+  isAvailable: {
     type: Boolean,
     default: true
   },
@@ -81,5 +75,8 @@ const PropertySchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Geospatial index for location-based queries
+PropertySchema.index({ coordinates: '2dsphere' });
 
 module.exports = mongoose.model('Property', PropertySchema);

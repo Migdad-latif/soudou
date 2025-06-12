@@ -53,8 +53,7 @@ const PropertyImageCarousel = ({ photos }) => {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         data={photos}
-        // FIX: Ensure keyExtractor is correct and robust
-        keyExtractor={(photo, index) => photo ? `${photo}-${index}` : String(index)} 
+        keyExtractor={(photo, index) => photo ? `${photo}-${index}` : String(index)}
         renderItem={({ item }) => (
           <Image source={{ uri: item }} style={styles.carouselImage} resizeMode="cover" />
         )}
@@ -83,7 +82,7 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const isFocused = useIsFocused();
-  const { user, token } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
 
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +91,10 @@ export default function HomeScreen() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [savedPropertyIds, setSavedPropertyIds] = useState(new Set());
 
+  // Debug logs for guards and user info
+  useEffect(() => {
+    console.log('FETCH GUARD:', { isFocused, authLoading, user });
+  }, [isFocused, authLoading, user]);
 
   useEffect(() => {
     const fetchSavedProperties = async () => {
@@ -105,7 +108,7 @@ export default function HomeScreen() {
         const savedIds = new Set(response.data.data.map(prop => prop._id));
         setSavedPropertyIds(savedIds);
       } catch (err) {
-        console.error("Error fetching saved properties:", err);
+        // Optional: handle error or ignore
       }
     };
 
@@ -114,9 +117,9 @@ export default function HomeScreen() {
     }
   }, [isFocused, user, token]);
 
-
+  // Apply filters from navigation
   useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || authLoading) return;
 
     if (route.params?.appliedFilters) {
       const { appliedFilters } = route.params;
@@ -129,10 +132,13 @@ export default function HomeScreen() {
     } else if (!filters.listingType) {
       setFilters({ listingType: 'For Sale' });
     }
-  }, [isFocused, route.params, navigation, filters.listingType]);
+  }, [isFocused, route.params, navigation, filters.listingType, user, authLoading]);
 
   useEffect(() => {
-    if (Object.keys(filters).length === 0 && !user) return;
+    if (!isFocused || authLoading) return;
+    // Robust agent id check
+    const agentId = user && user.role === 'agent' ? (user._id || user.id) : null;
+    if (user && user.role === 'agent' && !agentId) return;
 
     const fetchProperties = async () => {
       setLoading(true);
@@ -150,20 +156,16 @@ export default function HomeScreen() {
         }
         if (filters.keyword) params.keyword = filters.keyword;
 
-        if (user && user.role === 'agent') {
-          params.agent = user.id;
-          console.log('DEBUG (HomeScreen): Filtering properties by agent ID:', user.id);
+        // Only add agent if user._id (or user.id) exists
+        if (user && user.role === 'agent' && agentId) {
+          params.agent = agentId;
         } else {
           params.isAvailable = true;
-          console.log('DEBUG (HomeScreen): Showing only available properties.');
         }
-
-        console.log('DEBUG (HomeScreen): Fetching properties with params:', params);
 
         const response = await axios.get(API_URL, { params });
         setProperties(response.data.data);
       } catch (err) {
-        console.error('Error fetching properties:', err);
         setError('Failed to load properties. Check network and server.');
       } finally {
         setLoading(false);
@@ -171,8 +173,7 @@ export default function HomeScreen() {
     };
 
     fetchProperties();
-  }, [filters, user]);
-
+  }, [filters, user, isFocused, authLoading]);
 
   const handleFilterNavigation = () => {
     navigation.navigate('Filters', {
@@ -221,13 +222,11 @@ export default function HomeScreen() {
         alert('Property unsaved!');
       }
     } catch (err) {
-      console.error("Error toggling save property:", err);
       alert('Failed to save/unsave property. Please try again.');
     }
   };
 
-
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
@@ -314,7 +313,7 @@ export default function HomeScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>{item.title}</Text>
                 <Text style={styles.cardLocation}>
-                  {item.location?.city || 'Unknown Location'}, {item.location?.country || 'Unknown Country'}
+                  {item.location?.city || item.location || 'Unknown Location'}
                 </Text>
                 <Text style={styles.cardPrice}>{item.price.toLocaleString('en-US')} GNF</Text>
                 <Text style={styles.cardPropertyType}>

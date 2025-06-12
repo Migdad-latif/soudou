@@ -1,4 +1,3 @@
-// MUST be the very first executable line to load environment variables
 require('dotenv').config();
 
 const express = require('express');
@@ -6,35 +5,30 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Import routes (using require)
-const properties = require('./routes/properties');
-const auth = require('./routes/auth'); // Import auth router
-const uploads = require('./routes/uploads'); // Import uploads router
-const enquiries = require('./routes/enquiries'); // Import enquiries router
-
-
 // --- MongoDB Connection ---
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/soudou';
 
 if (!MONGODB_URI) {
-    console.error('Error: MONGODB_URI is not defined in the .env file!');
-    process.exit(1);
+  console.error('Error: MONGODB_URI is not defined in the .env file!');
+  process.exit(1);
 }
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected Successfully!'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 // --- End MongoDB Connection ---
 
-// Middleware: Process incoming requests
-app.use(express.json()); // Essential for parsing JSON bodies
+app.use(express.json());
 
 // Basic Route to confirm server is alive
 app.get('/', (req, res) => {
   res.send('Welcome to the Soudou Backend API!');
 });
 
-// Simple POST endpoint for frontend connectivity test (keep for now)
+// Simple POST endpoint for frontend connectivity test
 app.post('/test-frontend-post', (req, res) => {
   console.log('DEBUG: Received POST request to /test-frontend-post');
   console.log('DEBUG: Request Body:', req.body);
@@ -42,11 +36,10 @@ app.post('/test-frontend-post', (req, res) => {
 });
 
 // Mount routers
-app.use('/api/properties', properties);
-app.use('/api/auth', auth);
-app.use('/api/uploads', uploads);
-app.use('/api/enquiries', enquiries);
-
+app.use('/api/properties', require('./routes/properties'));
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/uploads', require('./routes/uploads'));
+app.use('/api/enquiries', require('./routes/enquiries'));
 
 // --- GLOBAL ERROR HANDLING MIDDLEWARE (MUST BE LAST) ---
 app.use((err, req, res, next) => {
