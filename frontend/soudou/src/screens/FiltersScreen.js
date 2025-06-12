@@ -1,30 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Button, TextInput } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import i18n from '../localization/i18n'; // <-- Import translation
 
 export default function FiltersScreen() {
   const navigation = useNavigation();
-  const route = useRoute(); // Use useRoute hook to get route params
+  const route = useRoute();
 
-  // Initial values from Home screen (e.g., 'For Sale' or 'For Rent' if passed)
-  // We also capture other filters that might be passed from HomeScreen to pre-populate
   const { selectedListingType, minBedrooms: initialMinBedrooms, maxBedrooms: initialMaxBedrooms,
-          minBathrooms: initialMinBathrooms, maxBathrooms: initialMaxBathrooms,
-          propertyType: initialPropertyType, keyword: initialKeyword } = route.params || {};
+    minBathrooms: initialMinBathrooms, maxBathrooms: initialMaxBathrooms,
+    propertyType: initialPropertyType, keyword: initialKeyword } = route.params || {};
 
-  // State for filter values
   const [minBedrooms, setMinBedrooms] = useState(initialMinBedrooms || 'any');
   const [maxBedrooms, setMaxBedrooms] = useState(initialMaxBedrooms || 'any');
   const [minBathrooms, setMinBathrooms] = useState(initialMinBathrooms || 'any');
   const [maxBathrooms, setMaxBathrooms] = useState(initialMaxBathrooms || 'any');
   const [selectedPropertyTypes, setSelectedPropertyTypes] = useState(initialPropertyType || []);
-  const [selectedListingTypeLocal, setSelectedListingTypeLocal] = useState(selectedListingType || 'For Sale'); // Default to 'For Sale'
-  const [keyword, setKeyword] = useState(initialKeyword || ''); // For the search bar keyword if passed
+  const [selectedListingTypeLocal, setSelectedListingTypeLocal] = useState(selectedListingType || 'For Sale');
+  const [keyword, setKeyword] = useState(initialKeyword || '');
 
-  // --- UPDATED PROPERTY TYPES HERE ---
-  const propertyTypes = ['House', 'Apartment', 'Land', 'Commercial', 'Office']; // Changed from previous list
-  // --- END UPDATED PROPERTY TYPES ---
+  const propertyTypes = [
+    i18n.t('house') || 'House',
+    i18n.t('apartment') || 'Apartment',
+    i18n.t('land') || 'Land',
+    i18n.t('commercial') || 'Commercial',
+    i18n.t('office') || 'Office'
+  ];
 
   const bedroomOptions = ['any', 1, 2, 3, 4, 5, 6, 7, 8];
   const bathroomOptions = ['any', 1, 2, 3, 4, 5, 6];
@@ -38,7 +40,6 @@ export default function FiltersScreen() {
   };
 
   const applyFilters = () => {
-    // Build a filter object to pass back to HomeScreen
     const filtersToApply = {
       listingType: selectedListingTypeLocal,
       minBedrooms: minBedrooms !== 'any' ? Number(minBedrooms) : undefined,
@@ -46,12 +47,9 @@ export default function FiltersScreen() {
       minBathrooms: minBathrooms !== 'any' ? Number(minBathrooms) : undefined,
       maxBathrooms: maxBathrooms !== 'any' ? Number(maxBathrooms) : undefined,
       propertyType: selectedPropertyTypes.length > 0 ? selectedPropertyTypes : undefined,
-      keyword: keyword !== '' ? keyword : undefined, // Include keyword from filters screen
+      keyword: keyword !== '' ? keyword : undefined,
     };
 
-    // Navigate back to Home screen (specifically, the Home component within the HomeTab stack)
-    // and pass the collected filters as parameters.
-    // The 'HomeTab' is the name of the Tab.Screen, and 'Home' is the name of the HomeStack.Screen
     navigation.navigate('HomeTab', { screen: 'Home', params: { appliedFilters: filtersToApply } });
   };
 
@@ -62,67 +60,67 @@ export default function FiltersScreen() {
     setMaxBathrooms('any');
     setSelectedPropertyTypes([]);
     setKeyword('');
-    setSelectedListingTypeLocal('For Sale'); // Reset to default
+    setSelectedListingTypeLocal('For Sale');
   };
 
   return (
     <View style={styles.outerContainer}>
       <ScrollView contentContainerStyle={styles.scrollViewContent}>
-        <Text style={styles.header}>Filters</Text>
+        <Text style={styles.header}>{i18n.t('filters') || 'Filters'}</Text>
 
         {/* Listing Type Toggle on Filters Screen */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Listing Type</Text>
+          <Text style={styles.sectionHeader}>{i18n.t('listingType') || 'Listing Type'}</Text>
           <View style={styles.toggleContainer}>
             <TouchableOpacity
               style={[styles.toggleButton, selectedListingTypeLocal === 'For Sale' && styles.activeToggleButton]}
               onPress={() => setSelectedListingTypeLocal('For Sale')}
             >
-              <Text style={[styles.toggleButtonText, selectedListingTypeLocal === 'For Sale' && styles.activeToggleButtonText]}>For Sale</Text>
+              <Text style={[styles.toggleButtonText, selectedListingTypeLocal === 'For Sale' && styles.activeToggleButtonText]}>
+                {i18n.t('forSale') || 'For Sale'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleButton, selectedListingTypeLocal === 'For Rent' && styles.activeToggleButton]}
               onPress={() => setSelectedListingTypeLocal('For Rent')}
             >
-              <Text style={[styles.toggleButtonText, selectedListingTypeLocal === 'For Rent' && styles.activeToggleButtonText]}>To Rent</Text>
+              <Text style={[styles.toggleButtonText, selectedListingTypeLocal === 'For Rent' && styles.activeToggleButtonText]}>
+                {i18n.t('toRent') || 'To Rent'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Bedrooms Filter */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Bedrooms</Text>
+          <Text style={styles.sectionHeader}>{i18n.t('bedrooms') || 'Bedrooms'}</Text>
           <View style={styles.pickerRow}>
-            <Text style={styles.pickerLabel}>Min:</Text>
+            <Text style={styles.pickerLabel}>{i18n.t('min') || 'Min'}:</Text>
             <View style={styles.pickerWrapper}>
-              {/* Picker for Min Bedrooms */}
               <Picker
                 selectedValue={minBedrooms}
                 onValueChange={(itemValue) => setMinBedrooms(itemValue)}
                 style={styles.picker}
               >
                 {bedroomOptions.map(option => (
-                  <Picker.Item key={String(option)} label={option === 'any' ? 'No min' : String(option)} value={option} />
+                  <Picker.Item key={String(option)} label={option === 'any' ? (i18n.t('noMin') || 'No min') : String(option)} value={option} />
                 ))}
               </Picker>
-              {/* Display selected Min Bedrooms value explicitly */}
               <Text style={styles.pickerSelectionText}>
                 {minBedrooms === 'any' ? '' : minBedrooms}
               </Text>
             </View>
-            <Text style={styles.pickerLabel}>Max:</Text>
+            <Text style={styles.pickerLabel}>{i18n.t('max') || 'Max'}:</Text>
             <View style={styles.pickerWrapper}>
-              {/* Picker for Max Bedrooms */}
               <Picker
                 selectedValue={maxBedrooms}
                 onValueChange={(itemValue) => setMaxBedrooms(itemValue)}
                 style={styles.picker}
               >
                 {bedroomOptions.map(option => (
-                  <Picker.Item key={String(option)} label={option === 'any' ? 'No max' : String(option)} value={option} />
+                  <Picker.Item key={String(option)} label={option === 'any' ? (i18n.t('noMax') || 'No max') : String(option)} value={option} />
                 ))}
               </Picker>
-              {/* Display selected Max Bedrooms value explicitly */}
               <Text style={styles.pickerSelectionText}>
                 {maxBedrooms === 'any' ? '' : maxBedrooms}
               </Text>
@@ -132,38 +130,34 @@ export default function FiltersScreen() {
 
         {/* Bathrooms Filter */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Bathrooms</Text>
+          <Text style={styles.sectionHeader}>{i18n.t('bathrooms') || 'Bathrooms'}</Text>
           <View style={styles.pickerRow}>
-            <Text style={styles.pickerLabel}>Min:</Text>
+            <Text style={styles.pickerLabel}>{i18n.t('min') || 'Min'}:</Text>
             <View style={styles.pickerWrapper}>
-              {/* Picker for Min Bathrooms */}
               <Picker
                 selectedValue={minBathrooms}
                 onValueChange={(itemValue) => setMinBathrooms(itemValue)}
                 style={styles.picker}
               >
                 {bathroomOptions.map(option => (
-                  <Picker.Item key={String(option)} label={option === 'any' ? 'No min' : String(option)} value={option} />
+                  <Picker.Item key={String(option)} label={option === 'any' ? (i18n.t('noMin') || 'No min') : String(option)} value={option} />
                 ))}
               </Picker>
-              {/* Display selected Min Bathrooms value explicitly */}
               <Text style={styles.pickerSelectionText}>
                 {minBathrooms === 'any' ? '' : minBathrooms}
               </Text>
             </View>
-            <Text style={styles.pickerLabel}>Max:</Text>
+            <Text style={styles.pickerLabel}>{i18n.t('max') || 'Max'}:</Text>
             <View style={styles.pickerWrapper}>
-              {/* Picker for Max Bathrooms */}
               <Picker
                 selectedValue={maxBathrooms}
                 onValueChange={(itemValue) => setMaxBathrooms(itemValue)}
                 style={styles.picker}
               >
                 {bathroomOptions.map(option => (
-                  <Picker.Item key={String(option)} label={option === 'any' ? 'No max' : String(option)} value={option} />
+                  <Picker.Item key={String(option)} label={option === 'any' ? (i18n.t('noMax') || 'No max') : String(option)} value={option} />
                 ))}
               </Picker>
-              {/* Display selected Max Bathrooms value explicitly */}
               <Text style={styles.pickerSelectionText}>
                 {maxBathrooms === 'any' ? '' : maxBathrooms}
               </Text>
@@ -173,7 +167,7 @@ export default function FiltersScreen() {
 
         {/* Property Type Filter */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Property Type</Text>
+          <Text style={styles.sectionHeader}>{i18n.t('propertyType') || 'Property Type'}</Text>
           <View style={styles.checkboxContainer}>
             {propertyTypes.map(type => (
               <TouchableOpacity
@@ -187,25 +181,23 @@ export default function FiltersScreen() {
           </View>
         </View>
 
-        {/* Keyword Search Input (for Filters Screen) */}
+        {/* Keyword Search Input */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Keywords</Text>
+          <Text style={styles.sectionHeader}>{i18n.t('keywords') || 'Keywords'}</Text>
           <TextInput
             style={styles.keywordInput}
-            placeholder="e.g. garden, balcony, specific area"
+            placeholder={i18n.t('keywordsPlaceholder') || "e.g. garden, balcony, specific area"}
             placeholderTextColor="#888"
             value={keyword}
             onChangeText={setKeyword}
           />
         </View>
 
-
         {/* Apply and Clear Buttons */}
         <View style={styles.buttonRow}>
-          <Button title="Clear" onPress={clearFilters} color="#888" />
-          <Button title="Search" onPress={applyFilters} color="#00c3a5" />
+          <Button title={i18n.t('clear') || "Clear"} onPress={clearFilters} color="#888" />
+          <Button title={i18n.t('search') || "Search"} onPress={applyFilters} color="#00c3a5" />
         </View>
-
       </ScrollView>
     </View>
   );
@@ -215,11 +207,11 @@ const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    paddingTop: 50, // To avoid status bar
+    paddingTop: 50,
   },
   scrollViewContent: {
     padding: 20,
-    paddingBottom: 40, // Give some space at the bottom
+    paddingBottom: 40,
   },
   header: {
     fontSize: 26,
@@ -261,26 +253,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,
-    overflow: 'hidden', // Ensures picker stays within bounds
-    flexDirection: 'row', // Added to help align Picker and Text
-    alignItems: 'center', // Align vertically
-    justifyContent: 'space-between', // Space out Picker and Text
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   picker: {
-    width: '70%', // Make picker smaller to make space for text
+    width: '70%',
     height: 40,
-    color: 'transparent', // Make the Picker's own text invisible
-    backgroundColor: '#f9f9f9', // Keep background
+    color: 'transparent',
+    backgroundColor: '#f9f9f9',
     textAlign: 'center',
     fontSize: 16,
   },
-  pickerSelectionText: { // NEW STYLE FOR THE EXPLICIT TEXT
-    position: 'absolute', // Position over the picker
-    left: 15, // Adjust based on padding
-    color: '#333', // Make sure this is visible!
+  pickerSelectionText: {
+    position: 'absolute',
+    left: 15,
+    color: '#333',
     fontSize: 16,
     fontWeight: 'bold',
-    width: '70%', // Match picker width
+    width: '70%',
     textAlign: 'left',
   },
   checkboxContainer: {
@@ -303,7 +295,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   activeCheckboxButton: {
-    backgroundColor: '#00c3a5', // Rightmove green
+    backgroundColor: '#00c3a5',
     borderColor: '#00c3a5',
   },
   activeCheckboxButtonText: {
@@ -339,7 +331,7 @@ const styles = StyleSheet.create({
     marginTop: 30,
     marginBottom: 20,
   },
-  keywordInput: { // New style for the keyword TextInput
+  keywordInput: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 8,

@@ -8,9 +8,10 @@ const PORT = process.env.PORT || 3000;
 
 // Import routes (using require)
 const properties = require('./routes/properties');
-const auth = require('./routes/auth'); // <-- Ensure this is correctly importing your auth routes
-const uploads = require('./routes/uploads');
-const enquiries = require('./routes/enquiries'); // Assuming you have an enquiries router
+const auth = require('./routes/auth'); // Import auth router
+const uploads = require('./routes/uploads'); // Import uploads router
+const enquiries = require('./routes/enquiries'); // Import enquiries router
+
 
 // --- MongoDB Connection ---
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -42,9 +43,9 @@ app.post('/test-frontend-post', (req, res) => {
 
 // Mount routers
 app.use('/api/properties', properties);
-app.use('/api/auth', auth); // Mount your auth routes
+app.use('/api/auth', auth);
 app.use('/api/uploads', uploads);
-app.use('/api/enquiries', enquiries); // Mount your enquiries routes
+app.use('/api/enquiries', enquiries);
 
 
 // --- GLOBAL ERROR HANDLING MIDDLEWARE (MUST BE LAST) ---

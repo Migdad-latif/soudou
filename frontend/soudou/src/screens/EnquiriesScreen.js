@@ -4,12 +4,12 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import i18n from '../localization/i18n'; // <-- ADD THIS LINE
 
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`;
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
-
 
 export default function EnquiriesScreen() {
   const navigation = useNavigation();
@@ -29,7 +29,6 @@ export default function EnquiriesScreen() {
 
   const modalConversationScrollRef = useRef(null);
   const conversationScrollRefs = useRef({});
-
 
   const PropertyImageCarousel = ({ photos }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -71,7 +70,7 @@ export default function EnquiriesScreen() {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           data={photos}
-          keyExtractor={(photo, index) => `${photo}-${index}`} // Fix this line: ensure backticks are correct
+          keyExtractor={(photo, index) => `${photo}-${index}`}
           renderItem={({ item }) => (
             <Image source={{ uri: item }} style={styles.carouselImage} resizeMode="cover" />
           )}
@@ -95,7 +94,6 @@ export default function EnquiriesScreen() {
     );
   };
 
-
   const fetchEnquiries = useCallback(async () => {
     if (!user || !token) {
       setEnquiries([]);
@@ -112,7 +110,7 @@ export default function EnquiriesScreen() {
         response = await axios.get(`${ENQUIRIES_API_URL}/my-sent`, { headers });
       } else {
         if (user.role !== 'agent') {
-          Alert.alert('Access Denied', 'Only agents can view received enquiries.');
+          Alert.alert(i18n.t('accessDenied'), i18n.t('onlyAgentsCanViewReceived'));
           setEnquiries([]);
           setLoading(false);
           return;
@@ -131,26 +129,22 @@ export default function EnquiriesScreen() {
         setCollapsedStates(newCollapsedStates);
         return fetchedEnquiries;
       });
-      
     } catch (err) {
       console.error("Error fetching enquiries:", err);
-      setError('Failed to load enquiries.');
+      setError(i18n.t('failedToLoadEnquiries'));
     } finally {
       setLoading(false);
     }
   }, [user, token, viewType]);
 
   useEffect(() => {
-    // This effect ensures viewType is correctly set on user/token change (e.g., login/logout)
     if (user && viewType !== (user.role === 'agent' ? 'received' : 'sent')) {
         setViewType(user.role === 'agent' ? 'received' : 'sent');
     }
-    
     if (isFocused) {
       fetchEnquiries();
     }
   }, [isFocused, user, fetchEnquiries]);
-
 
   const toggleMessageCollapse = (enquiryId) => {
     setCollapsedStates(prev => ({
@@ -163,7 +157,6 @@ export default function EnquiriesScreen() {
       }, 50);
     }
   };
-
 
   const handleViewEnquiry = async (enquiry) => {
     toggleMessageCollapse(enquiry._id);
@@ -179,10 +172,9 @@ export default function EnquiriesScreen() {
     }
   };
 
-
   const handleReplySubmission = async () => {
     if (!replyMessage.trim()) {
-      Alert.alert('Missing Message', 'Please type your message.');
+      Alert.alert(i18n.t('missingMessage'), i18n.t('pleaseTypeMessage'));
       return;
     }
     if (!currentEnquiryToReply) return;
@@ -195,7 +187,7 @@ export default function EnquiriesScreen() {
       }, { headers });
 
       if (response.status === 200) {
-        Alert.alert('Success', 'Message sent!');
+        Alert.alert(i18n.t('success'), i18n.t('messageSent'));
         setReplyMessage('');
         setLoading(false);
 
@@ -219,12 +211,12 @@ export default function EnquiriesScreen() {
         setCurrentEnquiryToReply(null);
 
       } else {
-        Alert.alert('Error', `Failed to send message: ${response.data?.error || 'Please try again.'}`);
+        Alert.alert(i18n.t('error'), `${i18n.t('failedToSendMessage')}: ${response.data?.error || i18n.t('pleaseTryAgain')}`);
         setLoading(false);
       }
     } catch (err) {
       console.error("Error sending message:", err);
-      Alert.alert('Error', 'Failed to send message. Please check your network.');
+      Alert.alert(i18n.t('error'), i18n.t('failedToSendMessageNetwork'));
     } finally {
       setLoading(false);
     }
@@ -232,18 +224,18 @@ export default function EnquiriesScreen() {
 
   const handleDeleteEnquiry = async (enquiryId) => {
     Alert.alert(
-      "Delete Enquiry",
-      "Are you sure you want to delete this enquiry and its conversation?",
+      i18n.t('deleteEnquiry'),
+      i18n.t('deleteEnquiryConfirmation'),
       [
         {
-          text: "Cancel",
+          text: i18n.t('cancel'),
           style: "cancel"
         },
         {
-          text: "Delete",
+          text: i18n.t('delete'),
           onPress: async () => {
             if (!user || !token) {
-              Alert.alert('Authentication Required', 'Please log in to delete messages.');
+              Alert.alert(i18n.t('authenticationRequired'), i18n.t('loginToDelete'));
               return;
             }
             try {
@@ -251,14 +243,14 @@ export default function EnquiriesScreen() {
               const response = await axios.patch(`${ENQUIRIES_API_URL}/${enquiryId}/delete`, {}, { headers }); 
 
               if (response.status === 200) {
-                Alert.alert('Success', 'Enquiry deleted successfully.');
+                Alert.alert(i18n.t('success'), i18n.t('enquiryDeleted'));
                 setEnquiries(prev => prev.filter(enq => enq._id !== enquiryId));
               } else {
-                Alert.alert('Error', `Failed to delete enquiry: ${response.data?.error || 'Please try again.'}`);
+                Alert.alert(i18n.t('error'), `${i18n.t('failedToDeleteEnquiry')}: ${response.data?.error || i18n.t('pleaseTryAgain')}`);
               }
             } catch (err) {
               console.error("Error deleting enquiry:", err);
-              Alert.alert('Error', 'Failed to delete enquiry. Please check your network.');
+              Alert.alert(i18n.t('error'), i18n.t('failedToDeleteEnquiryNetwork'));
             }
           },
           style: "destructive"
@@ -267,12 +259,11 @@ export default function EnquiriesScreen() {
     );
   };
 
-
   if (authLoading || loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading enquiries...</Text>
+        <Text>{i18n.t('loadingEnquiries')}</Text>
       </View>
     );
   }
@@ -280,8 +271,8 @@ export default function EnquiriesScreen() {
   if (!user) {
     return (
       <View style={styles.center}>
-        <Text style={styles.noUserText}>Please log in to view your enquiries.</Text>
-        <Button title="Sign In" onPress={() => navigation.navigate('AccountTab', { screen: 'Login' })} color="#007bff" />
+        <Text style={styles.noUserText}>{i18n.t('pleaseLoginToViewEnquiries')}</Text>
+        <Button title={i18n.t('signIn')} onPress={() => navigation.navigate('AccountTab', { screen: 'Login' })} color="#007bff" />
       </View>
     );
   }
@@ -289,32 +280,32 @@ export default function EnquiriesScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Error: {error}</Text>
+        <Text style={styles.errorText}>{i18n.t('error')}: {error}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>My Enquiries</Text>
+      <Text style={styles.header}>{i18n.t('myEnquiries')}</Text>
 
       {/* Toggle between Sent and Received */}
       {user ? (
         <View style={styles.toggleContainer}>
-          {user.role !== 'agent' && ( // Only show "Sent" for regular users
+          {user.role !== 'agent' && (
             <TouchableOpacity
               style={[styles.toggleButton, viewType === 'sent' && styles.activeToggleButton]}
               onPress={() => setViewType('sent')}
             >
-              <Text style={[styles.toggleButtonText, viewType === 'sent' && styles.activeToggleButtonText]}>Sent</Text>
+              <Text style={[styles.toggleButtonText, viewType === 'sent' && styles.activeToggleButtonText]}>{i18n.t('sent')}</Text>
             </TouchableOpacity>
           )}
-          {user.role === 'agent' && ( // Only show "Received" for agents
+          {user.role === 'agent' && (
             <TouchableOpacity
               style={[styles.toggleButton, viewType === 'received' && styles.activeToggleButton]}
               onPress={() => setViewType('received')}
             >
-              <Text style={[styles.toggleButtonText, viewType === 'received' && styles.activeToggleButtonText]}>Received</Text>
+              <Text style={[styles.toggleButtonText, viewType === 'received' && styles.activeToggleButtonText]}>{i18n.t('received')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -323,7 +314,9 @@ export default function EnquiriesScreen() {
       {enquiries.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.noEnquiriesText}>
-            {viewType === 'sent' ? "You haven't sent any enquiries yet." : "You haven't received any enquiries yet."}
+            {viewType === 'sent'
+              ? i18n.t('noSentEnquiries')
+              : i18n.t('noReceivedEnquiries')}
           </Text>
         </View>
       ) : (
@@ -339,8 +332,8 @@ export default function EnquiriesScreen() {
                   resizeMode="cover"
                 />
                 <View style={styles.enquiryCardHeaderContent}>
-                  <Text style={styles.enquiryPropertyTitle}>{item.property?.title || 'Property'}</Text>
-                  <Text style={styles.enquiryPropertyLocation}>{item.property?.location || 'Unknown Location'}</Text>
+                  <Text style={styles.enquiryPropertyTitle}>{item.property?.title || i18n.t('property')}</Text>
+                  <Text style={styles.enquiryPropertyLocation}>{item.property?.location || i18n.t('unknownLocation')}</Text>
                   <Text style={styles.enquiryDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
                 </View>
                 <View style={styles.enquiryStatus}>
@@ -349,9 +342,9 @@ export default function EnquiriesScreen() {
                     size={20}
                     color={item.status === 'replied' ? '#00c3a5' : item.status === 'read' ? '#007bff' : '#888'}
                   />
-                  {item.status === 'replied' && <Text style={styles.statusText}>Replied</Text>}
-                  {item.status === 'read' && <Text style={styles.statusText}>Read</Text>}
-                  {item.status === 'sent' && <Text style={styles.statusText}>Sent</Text>}
+                  {item.status === 'replied' && <Text style={styles.statusText}>{i18n.t('replied')}</Text>}
+                  {item.status === 'read' && <Text style={styles.statusText}>{i18n.t('read')}</Text>}
+                  {item.status === 'sent' && <Text style={styles.statusText}>{i18n.t('sent')}</Text>}
                 </View>
               </TouchableOpacity>
               <View style={collapsedStates[item._id] ? styles.collapsedContent : styles.expandedContent}>
@@ -367,7 +360,7 @@ export default function EnquiriesScreen() {
                     {item.conversation?.map((msg, msgIdx) => (
                       <View key={msgIdx} style={[styles.messageBubble, msg.senderId === user?.id ? styles.myMessage : styles.otherMessage]}>
                         <Text style={styles.messageSender}>
-                          {msg.senderId === user?.id ? 'You' : (msg.senderId?.name || (item.recipientAgent?._id === msg.senderId ? item.recipientAgent?.name : item.sender?.name || 'User'))}:
+                          {msg.senderId === user?.id ? i18n.t('you') : (msg.senderId?.name || (item.recipientAgent?._id === msg.senderId ? item.recipientAgent?.name : item.sender?.name || i18n.t('user')))}:
                         </Text>
                         <Text style={styles.messageText}>{msg.message}</Text>
                         <Text style={styles.messageTimestamp}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
@@ -395,10 +388,10 @@ export default function EnquiriesScreen() {
               </View>
               
               {viewType === 'received' && item.sender && (
-                <Text style={styles.enquirySender}>Original Sender: {item.sender?.name || 'User'} ({item.sender?.phoneNumber || 'N/A'})</Text>
+                <Text style={styles.enquirySender}>{i18n.t('originalSender')}: {item.sender?.name || i18n.t('user')} ({item.sender?.phoneNumber || 'N/A'})</Text>
               )}
               {viewType === 'sent' && item.recipientAgent && (
-                <Text style={styles.enquiryRecipient}>Recipient Agent: {item.recipientAgent?.name || 'Agent'} ({item.recipientAgent?.phoneNumber || 'N/A'})</Text>
+                <Text style={styles.enquiryRecipient}>{i18n.t('recipientAgent')}: {item.recipientAgent?.name || i18n.t('agent')} ({item.recipientAgent?.phoneNumber || 'N/A'})</Text>
               )}
               {((viewType === 'received' && user?.role === 'agent') || (viewType === 'sent' && item.conversation && item.conversation.length > 1)) && (
                 <TouchableOpacity style={styles.replyButton} onPress={() => {
@@ -406,13 +399,13 @@ export default function EnquiriesScreen() {
                   setReplyModalVisible(true);
                   setReplyMessage('');
                 }}>
-                  <Text style={styles.replyButtonText}>Send Message</Text>
+                  <Text style={styles.replyButtonText}>{i18n.t('sendMessage')}</Text>
                 </TouchableOpacity>
               )}
               {(user?.role === 'admin' || (item.sender?._id === user?.id) || (item.recipientAgent?._id === user?.id)) && (
                 <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteEnquiry(item._id)}>
                   <Ionicons name="trash-outline" size={20} color="#dc3545" />
-                  <Text style={styles.deleteButtonText}>Delete</Text>
+                  <Text style={styles.deleteButtonText}>{i18n.t('delete')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -430,16 +423,16 @@ export default function EnquiriesScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Send Message</Text>
+            <Text style={styles.modalTitle}>{i18n.t('sendMessage')}</Text>
             {currentEnquiryToReply && (
               <>
-                <Text style={styles.modalSubTitle}>About: {currentEnquiryToReply.property?.title || 'Property'}</Text>
-                <Text style={styles.modalOriginalMessage}>Conversation with {viewType === 'received' ? currentEnquiryToReply.sender?.name : currentEnquiryToReply.recipientAgent?.name || 'Agent'}</Text>
+                <Text style={styles.modalSubTitle}>{i18n.t('about')}: {currentEnquiryToReply.property?.title || i18n.t('property')}</Text>
+                <Text style={styles.modalOriginalMessage}>{i18n.t('conversationWith')} {viewType === 'received' ? currentEnquiryToReply.sender?.name : currentEnquiryToReply.recipientAgent?.name || i18n.t('agent')}</Text>
                 <RNScrollView ref={modalConversationScrollRef} style={styles.modalConversationScroll}>
                     {currentEnquiryToReply.conversation?.map((msg, msgIdx) => (
                         <View key={msgIdx} style={[styles.messageBubble, msg.senderId === user?.id ? styles.myMessage : styles.otherMessage]}>
                             <Text style={styles.messageSender}>
-                                {msg.senderId === user?.id ? 'You' : (msg.senderId?.name || (currentEnquiryToReply.recipientAgent?._id === msg.senderId ? currentEnquiryToReply.recipientAgent?.name : currentEnquiryToReply.sender?.name || 'User'))}:
+                                {msg.senderId === user?.id ? i18n.t('you') : (msg.senderId?.name || (currentEnquiryToReply.recipientAgent?._id === msg.senderId ? currentEnquiryToReply.recipientAgent?.name : currentEnquiryToReply.sender?.name || i18n.t('user')))}:
                             </Text>
                             <Text style={styles.messageText}>{msg.message}</Text>
                             <Text style={styles.messageTimestamp}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
@@ -451,15 +444,15 @@ export default function EnquiriesScreen() {
             <TextInput
               style={styles.modalTextInput}
               multiline
-              placeholder="Type your message here..."
+              placeholder={i18n.t('typeYourMessage')}
               value={replyMessage}
               onChangeText={setReplyMessage}
               maxLength={500}
             />
             <Text style={styles.modalCharCount}>{replyMessage.length}/500</Text>
             <View style={styles.modalButtonContainer}>
-              <Button title="Cancel" onPress={() => {setReplyModalVisible(false); setReplyMessage(''); setCurrentEnquiryToReply(null); setLoading(false);}} color="#dc3545" />
-              <Button title="Send Message" onPress={handleReplySubmission} color="#00c3a5" disabled={loading} />
+              <Button title={i18n.t('cancel')} onPress={() => {setReplyModalVisible(false); setReplyMessage(''); setCurrentEnquiryToReply(null); setLoading(false);}} color="#dc3545" />
+              <Button title={i18n.t('sendMessage')} onPress={handleReplySubmission} color="#00c3a5" disabled={loading} />
             </View>
             {loading && <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 10 }} />}
           </View>
@@ -468,6 +461,8 @@ export default function EnquiriesScreen() {
     </View>
   );
 }
+
+// ...styles (unchanged, as you already have them) ...
 
 const styles = StyleSheet.create({
   container: {

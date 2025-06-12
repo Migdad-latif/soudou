@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
-const API_BASE_URL = 'http://192.168.1.214:3000/api'; // Base URL for auth endpoints
+const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const screenWidth = Dimensions.get('window').width;
 
 const PropertyImageCarousel = ({ photos }) => {
@@ -37,7 +37,7 @@ const PropertyImageCarousel = ({ photos }) => {
   const onScroll = useCallback(
     (event) => {
       const offsetX = event.nativeEvent.contentOffset.x;
-      const newIndex = Math.round(offsetX / (screenWidth - 24)); // Adjusted for SavedScreen card width
+      const newIndex = Math.round(offsetX / (screenWidth - 24));
       if (newIndex !== currentIndex) {
         setCurrentIndex(newIndex);
       }
@@ -53,14 +53,14 @@ const PropertyImageCarousel = ({ photos }) => {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         data={photos}
-        keyExtractor={(photo, index) => `${photo}-${index}`} // FIX: Ensure this line is correct
+        // FIX: Ensure keyExtractor is correct and robust
+        keyExtractor={(photo, index) => photo ? `${photo}-${index}` : String(index)} 
         renderItem={({ item }) => (
           <Image source={{ uri: item }} style={styles.carouselImage} resizeMode="cover" />
         )}
         style={styles.carouselContainer}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        initialScrollIndex={currentIndex}
         getItemLayout={(data, index) => ({
           length: screenWidth - 24,
           offset: (screenWidth - 24) * index,
@@ -150,12 +150,15 @@ export default function HomeScreen() {
         }
         if (filters.keyword) params.keyword = filters.keyword;
 
-        // NEW LOGIC: Filter by agent if an agent is logged in
         if (user && user.role === 'agent') {
-          params.agent = user.id; // Assuming your backend's /api/properties endpoint supports an 'agent' filter
+          params.agent = user.id;
+          console.log('DEBUG (HomeScreen): Filtering properties by agent ID:', user.id);
+        } else {
+          params.isAvailable = true;
+          console.log('DEBUG (HomeScreen): Showing only available properties.');
         }
 
-        console.log('Fetching properties with params:', params);
+        console.log('DEBUG (HomeScreen): Fetching properties with params:', params);
 
         const response = await axios.get(API_URL, { params });
         setProperties(response.data.data);

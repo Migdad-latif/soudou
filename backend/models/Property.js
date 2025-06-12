@@ -1,6 +1,4 @@
 const mongoose = require('mongoose');
-// Removed: const bcrypt = require('bcryptjs'); // Not needed here
-// Removed: const jwt = require('jsonwebtoken'); // Not needed here
 
 const PropertySchema = new mongoose.Schema({
   title: {
@@ -69,12 +67,12 @@ const PropertySchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-  agent: {
+  agent: { // Define agent field as a reference to the User model
     type: mongoose.Schema.ObjectId,
     ref: 'User',
-    required: false
+    required: true // Property must have an associated agent
   },
-  isAvailable: {
+  isAvailable: { // Adding isAvailable based on previous user request
     type: Boolean,
     default: true
   },
@@ -83,8 +81,5 @@ const PropertySchema = new mongoose.Schema({
     default: Date.now
   }
 });
-
-// --- REMOVED: UserSchema.pre and UserSchema.methods (were incorrectly here) ---
-// This code block should NOT be in this file. It belongs ONLY in User.js
 
 module.exports = mongoose.model('Property', PropertySchema);

@@ -37,6 +37,8 @@ const sendTokenResponse = (user, statusCode, res) => {
 router.post('/register', async (req, res) => {
   const { name, phoneNumber, email, password, role } = req.body;
 
+  console.log('DEBUG (Auth Register): Received data:', { name, phoneNumber, email, password: password ? '[PRESENT]' : '[MISSING]', role }); // Log received data
+
   try {
     const user = await User.create({
       name, phoneNumber, ...(email && { email }), password, role
@@ -60,6 +62,8 @@ router.post('/register', async (req, res) => {
 // @route   POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { phoneNumber, password } = req.body;
+
+  console.log('DEBUG (Auth Login): Received data:', { phoneNumber, password: password ? '[PRESENT]' : '[MISSING]' }); // Log received data
 
   if (!phoneNumber || !password) {
     return res.status(400).json({ success: false, error: 'Please enter a phone number and password' });
@@ -101,24 +105,24 @@ router.get('/me', protect, async (req, res) => {
 router.put('/me', protect, async (req, res) => {
   const { name, email } = req.body;
 
+  console.log('DEBUG (Auth Update Profile): User ID:', req.user.id, 'Received data:', { name, email }); // Log received data
+
   try {
-    const user = await User.findById(req.user.id); // Get user from DB using ID from token
+    const user = await User.findById(req.user.id);
 
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // Update only allowed fields
     if (name) user.name = name;
     if (email) user.email = email;
 
-    await user.save({ validateBeforeSave: true }); // Save updated user, run validation
+    await user.save({ validateBeforeSave: true });
 
-    // Respond with updated user data (important for frontend context)
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
-      user: { // Send back the updated user object
+      user: {
         id: user._id,
         name: user.name,
         phoneNumber: user.phoneNumber,
@@ -134,58 +138,6 @@ router.put('/me', protect, async (req, res) => {
       return res.status(400).json({ success: false, error: messages });
     }
     res.status(500).json({ success: false, error: 'Server Error during profile update' });
-  }
-});
-
-
-// @route   PUT /api/auth/change-phone
-// @desc    Change user's phone number
-// @access  Private
-router.put('/change-phone', protect, async (req, res) => {
-  const { currentPassword, newPhoneNumber } = req.body;
-
-  if (!currentPassword || !newPhoneNumber) {
-    return res.status(400).json({ success: false, error: 'Current password and new phone number are required' });
-  }
-
-  try {
-    // Get user with password selected
-    const user = await User.findById(req.user.id).select('+password');
-
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    // Check if current password matches
-    const isMatch = await user.matchPassword(currentPassword);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, error: 'Incorrect current password' });
-    }
-
-    // Check if new phone number is already taken
-    const existingUserWithPhone = await User.findOne({ phoneNumber: newPhoneNumber });
-    if (existingUserWithPhone && existingUserWithPhone._id.toString() !== user._id.toString()) {
-      return res.status(400).json({ success: false, error: 'This phone number is already registered' });
-    }
-
-    user.phoneNumber = newPhoneNumber;
-    await user.save({ validateBeforeSave: true }); // Validate on save
-
-    // Re-send token with updated phone number in payload
-    sendTokenResponse(user, 200, res);
-
-  } catch (err) {
-    console.error("Change Phone API Error:", err);
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map(val => val.message);
-      return res.status(400).json({ success: false, error: messages });
-    }
-    if (err.code === 11000) { // Duplicate key error
-      const field = Object.keys(err.keyValue)[0];
-      let message = `A user with this ${field} already exists.`;
-      return res.status(400).json({ success: false, error: message });
-    }
-    res.status(500).json({ success: false, error: 'Server Error during phone number update' });
   }
 });
 
@@ -226,6 +178,7 @@ router.post('/save-property/:propertyId', protect, async (req, res) => {
 // @access  Private
 router.get('/saved-properties', protect, async (req, res) => {
   try {
+    // Populate the savedProperties field
     const user = await User.findById(req.user.id).populate('savedProperties');
 
     if (!user) {

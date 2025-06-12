@@ -8,14 +8,25 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system';
 import { useAuth } from '../context/AuthContext';
+import i18n from '../localization/i18n';
 
 const API_URL = 'http://192.168.1.214:3000/api/properties';
 const UPLOAD_API_URL = 'http://192.168.1.214:3000/api/uploads/image';
 
 const MAX_PHOTOS_ALLOWED = 5;
 
-const propertyTypeOptions = ['House', 'Apartment', 'Land', 'Commercial', 'Office'];
-const listingTypeOptions = ['For Sale', 'For Rent'];
+// Translatable options for property and listing types
+const propertyTypeOptions = [
+  { key: 'house', value: 'House' },
+  { key: 'apartment', value: 'Apartment' },
+  { key: 'land', value: 'Land' },
+  { key: 'commercial', value: 'Commercial' },
+  { key: 'office', value: 'Office' }
+];
+const listingTypeOptions = [
+  { key: 'forSale', value: 'For Sale' },
+  { key: 'forRent', value: 'For Rent' }
+];
 const numOptionsBedBath = Array.from({ length: 8 }, (_, i) => String(i + 1));
 const numOptionsLivingRooms = Array.from({ length: 5 }, (_, i) => String(i));
 const bedroomPickerOptions = ['0', ...numOptionsBedBath, '8+'];
@@ -41,18 +52,16 @@ export default function AddPropertyScreen() {
     (async () => {
       if (Platform.OS === 'web') return;
       let { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-      if (locStatus !== 'granted') Alert.alert('Permission Denied', 'Location permission is needed.');
+      if (locStatus !== 'granted') Alert.alert(i18n.t('permissionDenied'), i18n.t('locationPermissionNeeded'));
       let { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
-      if (camStatus !== 'granted') Alert.alert('Permission Denied', 'Camera permission is needed.');
+      if (camStatus !== 'granted') Alert.alert(i18n.t('permissionDenied'), i18n.t('cameraPermissionNeeded'));
       let { status: medLibStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (medLibStatus !== 'granted') Alert.alert('Permission Denied', 'Media library permission is needed.');
+      if (medLibStatus !== 'granted') Alert.alert(i18n.t('permissionDenied'), i18n.t('mediaLibraryPermissionNeeded'));
     })();
 
-    // On unmount, clear selected images
     return () => setPhotos([]);
   }, []);
 
-  // Ensure loading is false on mount
   useEffect(() => { setLoading(false); }, []);
 
   const updateFormField = useCallback((field, value) => { setForm((prev) => ({ ...prev, [field]: value })); }, []);
@@ -64,7 +73,7 @@ export default function AddPropertyScreen() {
       if (status !== 'granted') { 
         const { status: newStatus } = await Location.requestForegroundPermissionsAsync(); 
         if (newStatus !== 'granted') { 
-          Alert.alert('Permission Denied', 'Location permission is required.'); 
+          Alert.alert(i18n.t('permissionDenied'), i18n.t('locationPermissionRequired')); 
           setLoading(false);
           return; 
         } 
@@ -77,14 +86,14 @@ export default function AddPropertyScreen() {
         const addr = geocodedAddress[0]; 
         const formattedAddress = [addr.name, addr.street, addr.city, addr.region, addr.country].filter(Boolean).join(', ');
         updateFormField('location', formattedAddress); 
-        Alert.alert('Location Captured', `Location: ${formattedAddress}`);
+        Alert.alert(i18n.t('locationCaptured'), `${i18n.t('location')}: ${formattedAddress}`);
       } else { 
         updateFormField('location', `Lat: ${locationResult.coords.latitude}, Lon: ${locationResult.coords.longitude}`); 
-        Alert.alert('Location Captured', 'Could not get address from coordinates.'); 
+        Alert.alert(i18n.t('locationCaptured'), i18n.t('couldNotGetAddress')); 
       }
     } catch (err) { 
       console.error('Error getting location:', err); 
-      Alert.alert('Error', 'Failed to get current location. Ensure GPS is enabled.'); 
+      Alert.alert(i18n.t('error'), i18n.t('failedToGetCurrentLocation')); 
       setGpsCoords({ latitude: null, longitude: null }); 
       setLocationMethod('typed'); 
     } finally { setLoading(false); }
@@ -92,13 +101,13 @@ export default function AddPropertyScreen() {
 
   const selectOrTakePhoto = () => {
     if (photos.length >= MAX_PHOTOS_ALLOWED) {
-      Alert.alert('Photo Limit Reached', `You can only upload up to ${MAX_PHOTOS_ALLOWED} photos.`);
+      Alert.alert(i18n.t('photoLimitReached'), i18n.t('photoLimitMessage', { max: MAX_PHOTOS_ALLOWED }));
       return;
     }
-    Alert.alert('Add Photo', 'Choose an option', [
-      { text: 'Select from Gallery', onPress: () => handleImagePick(false) },
-      { text: 'Take Photo', onPress: () => handleImagePick(true) },
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(i18n.t('addPhoto'), i18n.t('chooseOption'), [
+      { text: i18n.t('selectFromGallery'), onPress: () => handleImagePick(false) },
+      { text: i18n.t('takePhoto'), onPress: () => handleImagePick(true) },
+      { text: i18n.t('cancel'), style: 'cancel' },
     ], { cancelable: true });
   };
 
@@ -118,19 +127,18 @@ export default function AddPropertyScreen() {
         result = await ImagePicker.launchImageLibraryAsync(options);
       }
       if (result.canceled) {
-        console.log('User cancelled image picker/camera.');
+        // User cancelled
       } else if (result.assets && result.assets.length > 0) {
         setPhotos((prev) => [...prev, { uri: result.assets[0].uri }]);
       } else {
-        Alert.alert('Error', `Could not ${useCamera ? 'take photo' : 'select image'}.`);
+        Alert.alert(i18n.t('error'), i18n.t(useCamera ? 'couldNotTakePhoto' : 'couldNotSelectImage'));
       }
     } catch (err) {
       console.error('Image pick error:', err);
-      Alert.alert('Error', 'Failed to pick image. Ensure permissions are granted in device settings.');
+      Alert.alert(i18n.t('error'), i18n.t('failedToPickImage'));
     }
   };
 
-  // NEW: Upload all photos when user presses Add Property
   const uploadAllPhotos = async () => {
     const uploadedPhotoUrls = [];
     for (const photo of photos) {
@@ -165,7 +173,7 @@ export default function AddPropertyScreen() {
         }
       } catch (err) {
         console.error('Upload error:', err);
-        throw err; // Stop upload and show error to user
+        throw err;
       }
     }
     return uploadedPhotoUrls;
@@ -173,12 +181,12 @@ export default function AddPropertyScreen() {
 
   const handleDeletePhoto = (index) => {
     Alert.alert(
-      "Delete Photo",
-      "Are you sure you want to delete this photo?",
+      i18n.t('deletePhoto'),
+      i18n.t('deletePhotoConfirmation'),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: i18n.t('cancel'), style: "cancel" },
         {
-          text: "Delete",
+          text: i18n.t('delete'),
           style: "destructive",
           onPress: () => setPhotos((prev) => prev.filter((_, i) => i !== index)),
         },
@@ -206,24 +214,23 @@ export default function AddPropertyScreen() {
       }
     } catch (err) {
       console.error('Image edit error:', err);
-      Alert.alert('Error', 'Failed to edit image.');
+      Alert.alert(i18n.t('error'), i18n.t('failedToEditImage'));
     }
   };
 
   const handleAddProperty = async () => {
-    if (!user || !token) { Alert.alert('Authentication Required', 'Please sign in to add a property.'); navigation.navigate('AccountTab', { screen: 'Login' }); return; }
+    if (!user || !token) { Alert.alert(i18n.t('authenticationRequired'), i18n.t('signInToAddProperty')); navigation.navigate('AccountTab', { screen: 'Login' }); return; }
     const requiredFields = ['title', 'description', 'price', 'location', 'contactName']; 
     for (const field of requiredFields) { 
       if (!form[field]) { 
-        Alert.alert('Missing Fields', `Please fill in '${field}' and all other required fields.`); return; 
+        Alert.alert(i18n.t('missingFields'), i18n.t('pleaseFillField', { field })); return; 
       } 
     }
-    if (photos.length === 0) { Alert.alert('Missing Photos', 'Please upload at least one photo.'); return; }
-    if (isNaN(Number(form.price))) { Alert.alert('Invalid Price', 'Please enter a valid number for price.'); return; }
+    if (photos.length === 0) { Alert.alert(i18n.t('missingPhotos'), i18n.t('pleaseUploadPhoto')); return; }
+    if (isNaN(Number(form.price))) { Alert.alert(i18n.t('invalidPrice'), i18n.t('enterValidPrice')); return; }
 
     setLoading(true); setError(null);
     try {
-      // UPLOAD ALL PHOTOS HERE
       const photoUrls = await uploadAllPhotos();
 
       const propertyData = { 
@@ -242,15 +249,15 @@ export default function AddPropertyScreen() {
       const response = await axios.post(API_URL, propertyData, { headers });
 
       if (response.status === 201) { 
-        Alert.alert('Success', 'Property added successfully!'); 
+        Alert.alert(i18n.t('success'), i18n.t('propertyAddedSuccessfully')); 
         clearForm(); 
         promptAddAnother(); 
       } else { 
-        setError(response.data.error || 'Failed to add property.'); 
+        setError(response.data.error || i18n.t('failedToAddProperty')); 
       }
     } catch (err) { 
       console.error('Add property error:', err); 
-      setError('Failed to add property. Please try again.'); 
+      setError(i18n.t('failedToAddPropertyTryAgain')); 
     } finally { setLoading(false); }
   };
 
@@ -259,13 +266,12 @@ export default function AddPropertyScreen() {
     setPhotos([]); setGpsCoords({ latitude: null, longitude: null }); setLocationMethod('typed'); setError(null);
   };
   const promptAddAnother = () => {
-    Alert.alert('Add Another?', 'Would you like to add another property?', [
-      { text: 'No, Go Home', onPress: () => navigation.navigate('HomeTab'), style: 'cancel' },
-      { text: 'Yes', onPress: () => {} },
+    Alert.alert(i18n.t('addAnother'), i18n.t('wouldYouLikeToAddAnother'), [
+      { text: i18n.t('noGoHome'), onPress: () => navigation.navigate('HomeTab'), style: 'cancel' },
+      { text: i18n.t('yes'), onPress: () => {} },
     ], { cancelable: false });
   };
 
-  // Fullscreen modal view
   const openFullScreen = (photo) => setFullscreenPhoto(photo.uri);
   const closeFullScreen = () => setFullscreenPhoto(null);
 
@@ -275,27 +281,27 @@ export default function AddPropertyScreen() {
       contentContainerStyle={{ paddingBottom: 80 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.heading}>Add Property</Text>
-      <Text style={styles.label}>Contact Name *</Text>
-      <TextInput style={styles.input} placeholder="Your Name or Agency Name" value={form.contactName} onChangeText={(text) => updateFormField('contactName', text)} />
-      <Text style={styles.label}>Location *</Text>
+      <Text style={styles.heading}>{i18n.t('addProperty')}</Text>
+      <Text style={styles.label}>{i18n.t('contactName')} *</Text>
+      <TextInput style={styles.input} placeholder={i18n.t('contactNamePlaceholder') || "Your Name or Agency Name"} value={form.contactName} onChangeText={(text) => updateFormField('contactName', text)} />
+      <Text style={styles.label}>{i18n.t('location')} *</Text>
       <View style={styles.locationRow}>
         <TextInput
           style={[styles.input, styles.locationInput]}
-          placeholder="e.g., Dixinn, Conakry"
+          placeholder={i18n.t('locationPlaceholder') || "e.g., Dixinn, Conakry"}
           value={form.location}
           onChangeText={(text) => { updateFormField('location', text); setLocationMethod('typed'); setGpsCoords({ latitude: null, longitude: null }); }}
         />
         <TouchableOpacity onPress={handleGetLocation} style={styles.locationButton}>
           <Ionicons name="locate-outline" size={24} color="#fff" />
-          <Text style={styles.locationButtonText}>Get My Location</Text>
+          <Text style={styles.locationButtonText}>{i18n.t('getMyLocation')}</Text>
         </TouchableOpacity>
       </View>
       {locationMethod === 'gps' && gpsCoords.latitude && gpsCoords.longitude && (
-        <Text style={styles.gpsLocationText}>Using GPS: Lat {gpsCoords.latitude.toFixed(4)}, Lon {gpsCoords.longitude.toFixed(4)}</Text>
+        <Text style={styles.gpsLocationText}>{i18n.t('usingGPS', { lat: gpsCoords.latitude.toFixed(4), lon: gpsCoords.longitude.toFixed(4) }) || `Using GPS: Lat ${gpsCoords.latitude.toFixed(4)}, Lon ${gpsCoords.longitude.toFixed(4)}`}</Text>
       )}
 
-      <Text style={styles.label}>Photos (max {MAX_PHOTOS_ALLOWED})</Text>
+      <Text style={styles.label}>{i18n.t('photos', { max: MAX_PHOTOS_ALLOWED }) || `Photos (max ${MAX_PHOTOS_ALLOWED})`}</Text>
       <View style={styles.photosContainer}>
         {photos.map((photo, idx) => (
           <View key={idx} style={styles.photoWithActions}>
@@ -323,24 +329,44 @@ export default function AddPropertyScreen() {
         )}
       </View>
 
-      <Text style={styles.label}>Title *</Text>
-      <TextInput style={styles.input} placeholder="Property title" value={form.title} onChangeText={(text) => updateFormField('title', text)} />
-      <Text style={styles.label}>Description *</Text>
-      <TextInput style={[styles.input, styles.textArea]} placeholder="Description" multiline value={form.description} onChangeText={(text) => updateFormField('description', text)} />
-      <Text style={styles.label}>Price *</Text>
+      <Text style={styles.label}>{i18n.t('title')} *</Text>
+      <TextInput style={styles.input} placeholder={i18n.t('propertyTitlePlaceholder') || "Property title"} value={form.title} onChangeText={(text) => updateFormField('title', text)} />
+      <Text style={styles.label}>{i18n.t('description')} *</Text>
+      <TextInput style={[styles.input, styles.textArea]} placeholder={i18n.t('descriptionPlaceholder') || "Description"} multiline value={form.description} onChangeText={(text) => updateFormField('description', text)} />
+      <Text style={styles.label}>{i18n.t('price')} *</Text>
       <View style={styles.priceRow}>
-        <TextInput style={[styles.input, styles.priceInput]} placeholder="Price" keyboardType="numeric" value={form.price} onChangeText={(text) => updateFormField('price', text)} />
-        <Picker selectedValue={form.currency} onValueChange={(value) => updateFormField('currency', value)} style={styles.picker}><Picker.Item label="GNF" value="GNF" /><Picker.Item label="USD" value="USD" /><Picker.Item label="EUR" value="EUR" /></Picker>
+        <TextInput style={[styles.input, styles.priceInput]} placeholder={i18n.t('pricePlaceholder') || "Price"} keyboardType="numeric" value={form.price} onChangeText={(text) => updateFormField('price', text)} />
+        <Picker selectedValue={form.currency} onValueChange={(value) => updateFormField('currency', value)} style={styles.picker}>
+          <Picker.Item label="GNF" value="GNF" />
+          <Picker.Item label="USD" value="USD" />
+          <Picker.Item label="EUR" value="EUR" />
+        </Picker>
       </View>
-      <Text style={styles.label}>Property Type</Text>
-      <Picker selectedValue={form.propertyType} onValueChange={(value) => updateFormField('propertyType', value)} style={styles.picker}>{propertyTypeOptions.map((type) => (<Picker.Item key={type} label={type} value={type} />))}</Picker>
-      <Text style={styles.label}>Listing Type</Text>
-      <Picker selectedValue={form.listingType} onValueChange={(value) => updateFormField('listingType', value)} style={styles.picker}>{listingTypeOptions.map((type) => (<Picker.Item key={type} label={type} value={type} />))}</Picker>
-      <Text style={styles.label}>Bedrooms</Text>
+      <Text style={styles.label}>{i18n.t('propertyType')}</Text>
+      <Picker
+        selectedValue={form.propertyType}
+        onValueChange={(value) => updateFormField('propertyType', value)}
+        style={styles.picker}
+      >
+        {propertyTypeOptions.map((type) => (
+          <Picker.Item key={type.key} label={i18n.t(type.key)} value={type.value} />
+        ))}
+      </Picker>
+      <Text style={styles.label}>{i18n.t('listingType')}</Text>
+      <Picker
+        selectedValue={form.listingType}
+        onValueChange={(value) => updateFormField('listingType', value)}
+        style={styles.picker}
+      >
+        {listingTypeOptions.map((type) => (
+          <Picker.Item key={type.key} label={i18n.t(type.key)} value={type.value} />
+        ))}
+      </Picker>
+      <Text style={styles.label}>{i18n.t('bedrooms')}</Text>
       <Picker selectedValue={form.bedrooms} onValueChange={(value) => updateFormField('bedrooms', value)} style={styles.picker}>{bedroomPickerOptions.map((num) => (<Picker.Item key={num} label={num} value={num} />))}</Picker>
-      <Text style={styles.label}>Bathrooms</Text>
+      <Text style={styles.label}>{i18n.t('bathrooms')}</Text>
       <Picker selectedValue={form.bathrooms} onValueChange={(value) => updateFormField('bathrooms', value)} style={styles.picker}>{bathroomPickerOptions.map((num) => (<Picker.Item key={num} label={num} value={num} />))}</Picker>
-      <Text style={styles.label}>Living Rooms</Text>
+      <Text style={styles.label}>{i18n.t('livingRooms')}</Text>
       <Picker selectedValue={form.livingRooms} onValueChange={(value) => updateFormField('livingRooms', value)} style={styles.picker}>{numOptionsLivingRooms.map((num) => (<Picker.Item key={num} label={num} value={num} />))}</Picker>
 
       {error && <Text style={styles.errorText}>{error}</Text>}
@@ -354,7 +380,7 @@ export default function AddPropertyScreen() {
         disabled={loading}
       >
         <Text style={styles.submitButtonText}>
-          {loading ? "Uploading..." : "Add Property"}
+          {loading ? i18n.t('uploading') || "Uploading..." : i18n.t('addProperty')}
         </Text>
       </TouchableOpacity>
 

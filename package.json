@@ -2,6 +2,9 @@
   "dependencies": {
     "cloudinary": "^2.6.1",
     "expo-file-system": "^18.1.10",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "react-native-agora": "^4.5.3",
+    "watchman": "^1.0.0",
+    "react-native-webview": "13.13.5"
   }
 }

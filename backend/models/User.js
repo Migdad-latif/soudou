@@ -68,4 +68,14 @@ UserSchema.methods.getSignedJwtToken = function() {
   );
 };
 
+// Static method to find user by email or phone
+UserSchema.statics.findByEmailOrPhone = async function(identifier) {
+  const isEmail = /^\S+@\S+\.\S+$/.test(identifier);
+  if (isEmail) {
+    return await this.findOne({ email: identifier }).select('+password');
+  } else {
+    return await this.findOne({ phoneNumber: identifier }).select('+password');
+  }
+};
+
 module.exports = mongoose.model('User', UserSchema);

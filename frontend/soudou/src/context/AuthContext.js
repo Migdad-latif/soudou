@@ -22,11 +22,13 @@ export const AuthProvider = ({ children, navigationRef }) => {
         if (storedToken) {
           setToken(storedToken);
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          // Fetch user data after token is loaded to ensure 'user' object is complete
           const response = await axios.get(`${API_BASE_URL}/auth/me`);
-          setUser(response.data.data);
+          setUser(response.data.data); // Set user data from backend, which includes user.id, role etc.
         }
       } catch (e) {
         console.error("Failed to load token or fetch user from SecureStore/backend:", e);
+        // Clear token if user fetch fails (e.g., token expired/invalid)
         await SecureStore.deleteItemAsync('userToken');
         setToken(null);
         setUser(null);
@@ -42,12 +44,12 @@ export const AuthProvider = ({ children, navigationRef }) => {
     setAuthError(null);
     setIsLoading(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, { phoneNumber, password });
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, { phoneNumber, password }); 
       const { token: receivedToken, user: userData } = response.data;
 
       await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
-      setUser(userData);
+      setUser(userData); // Set user data from backend
       axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
@@ -72,7 +74,7 @@ export const AuthProvider = ({ children, navigationRef }) => {
 
       await SecureStore.setItemAsync('userToken', receivedToken);
       setToken(receivedToken);
-      setUser(userData);
+      setUser(userData); // Set user data from backend
       axios.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`;
       return { success: true };
     } catch (err) {
@@ -110,25 +112,6 @@ export const AuthProvider = ({ children, navigationRef }) => {
     }
   };
 
-  // NEW: updatePhoneNumber function to be exposed via context
-  const updatePhoneNumber = async (newPhoneNumber, currentPassword) => {
-    try {
-      const headers = { 'Authorization': `Bearer ${token}` };
-      const response = await axios.put(`${API_BASE_URL}/auth/change-phone`, { currentPassword, newPhoneNumber }, { headers });
-      
-      // Update user and token in local state (token might change if phone number is in payload)
-      await SecureStore.setItemAsync('userToken', response.data.token); // Update token in secure store
-      setToken(response.data.token);
-      setUser(response.data.user); // Update user object
-      axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`; // Update default header
-      return { success: true, message: response.data.message };
-    } catch (err) {
-      console.error("AuthContext updatePhoneNumber Error:", err.response?.data?.error || err.message);
-      return { success: false, error: err.response?.data?.error || "Failed to update phone number." };
-    }
-  };
-
-
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -139,8 +122,7 @@ export const AuthProvider = ({ children, navigationRef }) => {
   }
 
   return (
-    // Add updatePhoneNumber to the context value
-    <AuthContext.Provider value={{ user, setUser, token, authError, login, register, logout, isLoading, updatePhoneNumber }}>
+    <AuthContext.Provider value={{ user, setUser, token, authError, login, register, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,11 +4,11 @@
     "slug": "soudou-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/soudou-logo.png", 
+    "icon": "./assets/soudou-logo.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/soudou-logo.png", 
-      "resizeMode": "contain", 
+      "image": "./assets/soudou-logo.png",
+      "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "assetBundlePatterns": [
@@ -22,10 +22,13 @@
         "foregroundImage": "./assets/soudou-logo.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.yourusername.soudouapp" 
+      "package": "com.yourusername.soudouapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-localization"
+    ]
   }
 }

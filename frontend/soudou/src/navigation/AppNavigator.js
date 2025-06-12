@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -16,12 +16,32 @@ import RegisterScreen from '../screens/RegisterScreen';
 import AddPropertyScreen from '../screens/AddPropertyScreen';
 
 import { useAuth } from '../context/AuthContext';
+import i18n from '../localization/i18n';
 
 const HomeStack = createStackNavigator();
 const AccountStack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Helper to force re-render on language change
+function useForceLanguageRerender() {
+  const [lang, setLang] = useState(i18n.locale);
+  useEffect(() => {
+    // Listen for language change on i18n-js
+    if (i18n.onChange) {
+      const unsub = i18n.onChange(() => setLang(i18n.locale));
+      return () => { if (unsub?.remove) unsub.remove(); };
+    }
+    // Poll as a fallback
+    const interval = setInterval(() => {
+      if (i18n.locale !== lang) setLang(i18n.locale);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [lang]);
+}
+
+// Stack Navigator for the Home Tab
 function HomeStackNavigator() {
+  useForceLanguageRerender();
   return (
     <HomeStack.Navigator>
       <HomeStack.Screen
@@ -32,23 +52,25 @@ function HomeStackNavigator() {
       <HomeStack.Screen
         name="Filters"
         component={FiltersScreen}
-        options={{ title: 'Property Filters' }}
+        options={() => ({ title: i18n.t('propertyFilters') })}
       />
       <HomeStack.Screen
         name="PropertyDetails"
         component={PropertyDetailsScreen}
-        options={{ title: 'Property Details' }}
+        options={() => ({ title: i18n.t('propertyDetails') })}
       />
       <HomeStack.Screen
         name="AddProperty"
         component={AddPropertyScreen}
-        options={{ title: 'Add New Property' }}
+        options={() => ({ title: i18n.t('addNewProperty') })}
       />
     </HomeStack.Navigator>
   );
 }
 
+// Stack Navigator for the Account Tab (handles Login/Register flow)
 function AccountStackNavigator() {
+  useForceLanguageRerender();
   return (
     <AccountStack.Navigator>
       <AccountStack.Screen
@@ -59,12 +81,12 @@ function AccountStackNavigator() {
       <AccountStack.Screen
         name="Login"
         component={LoginScreen}
-        options={{ title: 'Sign In' }}
+        options={() => ({ title: i18n.t('signIn') })}
       />
       <AccountStack.Screen
         name="Register"
         component={RegisterScreen}
-        options={{ title: 'Create Account' }}
+        options={() => ({ title: i18n.t('createAccount') })}
       />
     </AccountStack.Navigator>
   );
@@ -82,13 +104,14 @@ function SavedTabBarLabel({ color }) {
   const { user } = useAuth();
   return (
     <Text style={{ color, fontSize: 12 }}>
-      {user && user.role === 'agent' ? "Dashboard" : "Saved"}
+      {user && user.role === 'agent' ? i18n.t('dashboard') : i18n.t('saved')}
     </Text>
   );
 }
 
 // Main Bottom Tab Navigator
 function AppNavigator() {
+  useForceLanguageRerender();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -110,23 +133,39 @@ function AppNavigator() {
           if (route.name === 'Saved') {
             return <SavedTabBarLabel color={color} />;
           }
-          if (route.name === 'HomeTab') return <Text style={{ color, fontSize: 12 }}>Home</Text>;
-          if (route.name === 'Enquiries') return <Text style={{ color, fontSize: 12 }}>Enquiries</Text>;
-          if (route.name === 'AccountTab') return <Text style={{ color, fontSize: 12 }}>Account</Text>;
+          if (route.name === 'HomeTab') return <Text style={{ color, fontSize: 12 }}>{i18n.t('home')}</Text>;
+          if (route.name === 'Enquiries') return <Text style={{ color, fontSize: 12 }}>{i18n.t('enquiries')}</Text>;
+          if (route.name === 'AccountTab') return <Text style={{ color, fontSize: 12 }}>{i18n.t('account')}</Text>;
         }
       })}
     >
       <Tab.Screen
         name="HomeTab"
         component={HomeStackNavigator}
-        options={{ title: 'Home' }}
+        options={{
+          title: i18n.t('home'),
+        }}
       />
-      <Tab.Screen name="Saved" component={SavedScreen} />
-      <Tab.Screen name="Enquiries" component={EnquiriesScreen} />
+      <Tab.Screen
+        name="Saved"
+        component={SavedScreen}
+        options={{
+          title: i18n.t('saved'),
+        }}
+      />
+      <Tab.Screen
+        name="Enquiries"
+        component={EnquiriesScreen}
+        options={{
+          title: i18n.t('enquiries'),
+        }}
+      />
       <Tab.Screen
         name="AccountTab"
         component={AccountStackNavigator}
-        options={{ title: 'Account' }}
+        options={{
+          title: i18n.t('account'),
+        }}
       />
     </Tab.Navigator>
   );

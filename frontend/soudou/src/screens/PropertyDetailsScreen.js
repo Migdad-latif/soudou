@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Image, Dimensions, Button, FlatList, TouchableOpacity, Modal, Linking, TextInput, Alert } from 'react-native';
 import axios from 'axios';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, UrlTile } from 'react-native-maps';
 import { useAuth } from '../context/AuthContext';
+import i18n from '../localization/i18n';
 
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
@@ -15,9 +16,8 @@ const ENQUIRIES_API_URL = `${API_BASE_URL}/enquiries`;
 
 export default function PropertyDetailsScreen() {
   const route = useRoute();
-  const navigation = useNavigation();
   const { propertyId } = route.params;
-  const { user, token } = useAuth();
+  const { user, token, language } = useAuth(); // <--- Use language if provided by your AuthContext
 
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,15 +27,34 @@ export default function PropertyDetailsScreen() {
   const [isPropertySaved, setIsPropertySaved] = useState(false);
   const [enquiryModalVisible, setEnquiryModalVisible] = useState(false);
   const [enquiryMessage, setEnquiryMessage] = useState('');
+  const [lang, setLang] = useState(i18n.locale);
 
   const carouselRef = useRef(null);
   const fullscreenRef = useRef(null);
+
+  // Watch for language change to force rerender
+  useEffect(() => {
+    // If using i18n-js
+    const sub = i18n.onChange?.(() => setLang(i18n.locale));
+    // If you use a language from context, subscribe to it instead:
+    // setLang(language)
+    return () => {
+      if (sub && sub.remove) sub.remove();
+    };
+  }, [language]);
 
   const defaultRegion = {
     latitude: 9.5098,
     longitude: -13.7123,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
+  };
+
+  const getTranslatedListingType = (listingType) => {
+    if (!listingType) return '';
+    if (listingType === 'For Sale') return i18n.t('forSale');
+    if (listingType === 'For Rent') return i18n.t('forRent');
+    return i18n.t(listingType.replace(/\s/g, '').toLowerCase()) || listingType;
   };
 
   useEffect(() => {
@@ -60,8 +79,9 @@ export default function PropertyDetailsScreen() {
             setIsPropertySaved(false);
           }
         }
+
       } catch (err) {
-        setError('Failed to load property details. Check network and ID.');
+        setError(i18n.t('failedToLoadPropertyDetails') || 'Failed to load property details. Check network and ID.');
       } finally {
         setLoading(false);
       }
@@ -70,15 +90,15 @@ export default function PropertyDetailsScreen() {
     if (propertyId) {
       fetchPropertyDetails();
     } else {
-      setError('No property ID provided. Please return to Home and try again.');
+      setError(i18n.t('noPropertyIdProvided') || 'No property ID provided. Please return to Home and try again.');
       setLoading(false);
     }
-  }, [propertyId, user, token]);
+    // Add lang as a dependency so screen re-renders on language change
+  }, [propertyId, user, token, lang]);
 
   const handleToggleSave = async () => {
     if (!user || !token) {
-      Alert.alert('Authentication Required', 'Please log in to save properties.');
-      navigation.navigate('AccountTab', { screen: 'Login' });
+      Alert.alert(i18n.t('authenticationRequired'), i18n.t('loginToSaveProperty'));
       return;
     }
     try {
@@ -86,41 +106,38 @@ export default function PropertyDetailsScreen() {
       const response = await axios.post(`${API_BASE_URL}/auth/save-property/${propertyId}`, {}, { headers });
       if (response.data.action === 'saved') {
         setIsPropertySaved(true);
-        Alert.alert('Success', 'Property saved!');
+        Alert.alert(i18n.t('success'), i18n.t('propertySaved'));
       } else {
         setIsPropertySaved(false);
-        Alert.alert('Success', 'Property unsaved!');
+        Alert.alert(i18n.t('success'), i18n.t('propertyUnsaved'));
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to save/unsave property. Please try again.');
+      Alert.alert(i18n.t('error'), i18n.t('failedToSaveUnsaveProperty'));
     }
   };
 
   const handleCallAgent = () => {
-    if (property?.agent?.phoneNumber) {
-      Linking.openURL(`tel:${property.agent.phoneNumber}`);
-    } else {
-      Alert.alert('Error', 'Agent phone number not available.');
-    }
-  };
+    const agentPhone =
+      property?.agent?.phoneNumber ||
+      property?.agent?.phone ||
+      property?.phoneNumber ||
+      property?.contactPhone;
 
-  const handleTextAgent = () => {
-    if (property?.agent?.phoneNumber) {
-      Linking.openURL(`sms:${property.agent.phoneNumber}`);
+    if (agentPhone) {
+      Linking.openURL(`tel:${agentPhone}`);
     } else {
-      Alert.alert('Error', 'Agent phone number not available.');
+      Alert.alert(i18n.t('error'), i18n.t('agentPhoneNotAvailable'));
     }
   };
 
   const handleSendEnquiry = async () => {
     if (!user || !token) {
-      Alert.alert('Authentication Required', 'Please log in to send an enquiry.');
+      Alert.alert(i18n.t('authenticationRequired'), i18n.t('loginToSendEnquiry'));
       setEnquiryModalVisible(false);
-      navigation.navigate('AccountTab', { screen: 'Login' });
       return;
     }
     if (!enquiryMessage.trim()) {
-      Alert.alert('Missing Message', 'Please type your enquiry message.');
+      Alert.alert(i18n.t('missingMessage'), i18n.t('typeEnquiryMessage'));
       return;
     }
     setLoading(true);
@@ -131,14 +148,14 @@ export default function PropertyDetailsScreen() {
         message: enquiryMessage,
       }, { headers });
       if (response.status === 201) {
-        Alert.alert('Success', 'Your enquiry has been sent to the agent!');
+        Alert.alert(i18n.t('success'), i18n.t('enquirySent'));
         setEnquiryMessage('');
         setEnquiryModalVisible(false);
       } else {
-        Alert.alert('Error', `Failed to send enquiry: ${response.data?.error || 'Please try again.'}`);
+        Alert.alert(i18n.t('error'), i18n.t('failedToSendEnquiry') + ': ' + (response.data?.error || i18n.t('pleaseTryAgain')));
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to send enquiry. Please check your network.');
+      Alert.alert(i18n.t('error'), i18n.t('failedToSendEnquiryNetwork'));
     } finally {
       setLoading(false);
     }
@@ -179,7 +196,7 @@ export default function PropertyDetailsScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading property details...</Text>
+        <Text>{i18n.t('loadingPropertyDetails') || 'Loading property details...'}</Text>
       </View>
     );
   }
@@ -187,7 +204,7 @@ export default function PropertyDetailsScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Error: {error}</Text>
+        <Text style={styles.errorText}>{i18n.t('error')}: {error}</Text>
       </View>
     );
   }
@@ -195,7 +212,7 @@ export default function PropertyDetailsScreen() {
   if (!property) {
     return (
       <View style={styles.center}>
-        <Text>Property not found or data is empty.</Text>
+        <Text>{i18n.t('propertyNotFound') || 'Property not found or data is empty.'}</Text>
       </View>
     );
   }
@@ -227,7 +244,7 @@ export default function PropertyDetailsScreen() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               data={property.photos}
-              keyExtractor={(photo, index) => `${photo}-${index}`}
+              keyExtractor={(photo, index) => photo + index}
               renderItem={({ item: photoUri, index }) => (
                 <TouchableOpacity
                   activeOpacity={0.9}
@@ -256,47 +273,53 @@ export default function PropertyDetailsScreen() {
                 setCurrentIndex(index);
               }}
             />
+            {/* Left Arrow */}
             {currentIndex > 0 && renderArrow('left', () => scrollToIndex(currentIndex - 1, carouselRef))}
+            {/* Right Arrow */}
             {currentIndex < property.photos.length - 1 && renderArrow('right', () => scrollToIndex(currentIndex + 1, carouselRef))}
           </View>
         ) : (
           <View style={styles.noImageIcon}>
             <Ionicons name="image-outline" size={80} color="#ccc" />
-            <Text style={styles.noImageText}>No Image Available</Text>
+            <Text style={styles.noImageText}>{i18n.t('noImageAvailable') || 'No Image Available'}</Text>
           </View>
         )}
         
         <View style={styles.detailsCard}>
           <Text style={styles.price}>
             {property.price.toLocaleString('en-US', { style: 'currency', currency: property.currency || 'GNF' })}
-            {property.listingType === 'For Rent' ? ' pcm' : ''}
+            {property.listingType === 'For Rent' ? ' ' + (i18n.t('pcm') || 'pcm') : ''}
           </Text>
           <Text style={styles.address}>{property.location}</Text>
-          <Text style={styles.addedDate}>Added: {new Date(property.createdAt).toLocaleDateString()}</Text>
+          <Text style={styles.addedDate}>{i18n.t('added') || 'Added'}: {new Date(property.createdAt).toLocaleDateString()}</Text>
 
           <View style={styles.quickDetailsRow}>
             <View style={styles.quickDetailItem}>
               <Ionicons name="bed-outline" size={20} color="#333" />
-              <Text style={styles.quickDetailText}>{property.bedrooms} Bed</Text>
+              <Text style={styles.quickDetailText}>{property.bedrooms} {i18n.t('bed') || 'Bed'}</Text>
             </View>
             <View style={styles.quickDetailItem}>
               <Ionicons name="toilet" size={20} color="#333" />
-              <Text style={styles.quickDetailText}>{property.bathrooms} Bath</Text>
+              <Text style={styles.quickDetailText}>{property.bathrooms} {i18n.t('bath') || 'Bath'}</Text>
             </View>
             <View style={styles.quickDetailItem}>
               <Ionicons name="home-outline" size={20} color="#333" />
-              <Text style={styles.quickDetailText}>{property.propertyType}</Text>
+              <Text style={styles.quickDetailText}>{i18n.t(property.propertyType?.toLowerCase())}</Text>
+            </View>
+            <View style={styles.quickDetailItem}>
+              <Ionicons name="pricetag-outline" size={20} color="#333" />
+              <Text style={styles.quickDetailText}>{getTranslatedListingType(property.listingType)}</Text>
             </View>
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Description</Text>
+            <Text style={styles.sectionHeader}>{i18n.t('description') || 'Description'}</Text>
             <Text style={styles.descriptionText}>{property.description}</Text>
           </View>
 
           {/* Map View */}
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Approximate Location</Text>
+            <Text style={styles.sectionHeader}>{i18n.t('approximateLocation') || 'Approximate Location'}</Text>
             <MapView
               style={styles.map}
               initialRegion={mapRegion}
@@ -313,30 +336,36 @@ export default function PropertyDetailsScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Key Features / Details</Text>
-            <Text>- Property Type: {property.propertyType}</Text>
-            <Text>- Listing Type: {property.listingType}</Text>
-            <Text>- Bedrooms: {property.bedrooms}</Text>
-            <Text>- Bathrooms: {property.bathrooms}</Text>
-            <Text>- Living Rooms: {property.livingRooms}</Text>
-            <Text>- Contact: {property.contactName}</Text>
-            <Text>- Available: {property.isAvailable ? 'Yes' : 'No'}</Text>
+            <Text style={styles.sectionHeader}>{i18n.t('keyFeatures') || 'Key Features / Details'}</Text>
+            <Text>- {i18n.t('propertyType') || 'Property Type'}: {i18n.t(property.propertyType?.toLowerCase())}</Text>
+            <Text>
+              - {i18n.t('listingType') || 'Listing Type'}: {getTranslatedListingType(property.listingType)}
+            </Text>
+            <Text>- {i18n.t('bedrooms') || 'Bedrooms'}: {property.bedrooms}</Text>
+            <Text>- {i18n.t('bathrooms') || 'Bathrooms'}: {property.bathrooms}</Text>
+            <Text>- {i18n.t('livingRooms') || 'Living Rooms'}: {property.livingRooms}</Text>
+            <Text>- {i18n.t('contact') || 'Contact'}: {property.contactName}</Text>
+            <Text>- {i18n.t('available') || 'Available'}: {property.isAvailable ? (i18n.t('yes') || 'Yes') : (i18n.t('no') || 'No')}</Text>
           </View>
 
-          {/* Only show contact/enquiry buttons if NOT agent */}
-          {!isAgent && (
+          {/* Show Call Agent and Send Enquiry for logged-in non-agent users */}
+          {!isAgent && user && (
             <>
               <View style={styles.contactButtons}>
-                <Button title="Call Agent" onPress={handleCallAgent} color="#007bff" />
-                <Button title="Text Agent" onPress={handleTextAgent} color="#00c3a5" />
+                <Button title={i18n.t('callAgent') || "Call Agent"} onPress={handleCallAgent} color="#007bff" />
               </View>
-              {user && (
-                <TouchableOpacity style={styles.enquireButton} onPress={() => setEnquiryModalVisible(true)}>
-                  <Text style={styles.enquireButtonText}>Send Enquiry</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity style={styles.enquireButton} onPress={() => setEnquiryModalVisible(true)}>
+                <Text style={styles.enquireButtonText}>{i18n.t('sendEnquiry') || 'Send Enquiry'}</Text>
+              </TouchableOpacity>
             </>
           )}
+          {/* Show Call Agent for guests */}
+          {!isAgent && !user && (
+            <View style={styles.contactButtons}>
+              <Button title={i18n.t('callAgent') || "Call Agent"} onPress={handleCallAgent} color="#007bff" />
+            </View>
+          )}
+          {/* Agent: show nothing */}
 
           {/* Save/Unsave Heart Icon */}
           {user && (
@@ -351,6 +380,7 @@ export default function PropertyDetailsScreen() {
               />
             </TouchableOpacity>
           )}
+
         </View>
       </ScrollView>
 
@@ -363,7 +393,7 @@ export default function PropertyDetailsScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             data={property.photos}
-            keyExtractor={(photo, index) => `${photo}-${index}`}
+            keyExtractor={(photo, index) => photo + index}
             renderItem={({ item: photoUri }) => (
               <Image source={{ uri: photoUri }} style={styles.fullscreenImage} resizeMode="contain" />
             )}
@@ -398,19 +428,19 @@ export default function PropertyDetailsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Enquire about this property</Text>
+            <Text style={styles.modalTitle}>{i18n.t('enquireAboutThisProperty') || 'Enquire about this property'}</Text>
             <TextInput
               style={styles.modalTextInput}
               multiline
-              placeholder="Type your message here..."
+              placeholder={i18n.t('typeYourMessageHere') || "Type your message here..."}
               value={enquiryMessage}
               onChangeText={setEnquiryMessage}
               maxLength={500}
             />
             <Text style={styles.modalCharCount}>{enquiryMessage.length}/500</Text>
             <View style={styles.modalButtonContainer}>
-              <Button title="Cancel" onPress={() => setEnquiryModalVisible(false)} color="#dc3545" />
-              <Button title="Send Enquiry" onPress={handleSendEnquiry} color="#00c3a5" disabled={loading} />
+              <Button title={i18n.t('cancel') || "Cancel"} onPress={() => setEnquiryModalVisible(false)} color="#dc3545" />
+              <Button title={i18n.t('sendEnquiry') || "Send Enquiry"} onPress={handleSendEnquiry} color="#00c3a5" disabled={loading} />
             </View>
             {loading && <ActivityIndicator size="small" color="#007bff" style={{ marginTop: 10 }} />}
           </View>
@@ -421,7 +451,6 @@ export default function PropertyDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // ... (same as your previous styles)
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',

@@ -2,17 +2,16 @@ const express = require('express');
 const Property = require('../models/Property');
 const router = express.Router();
 const geocoder = require('../utils/geocoder'); // Assuming you have a geocoder utility
-const { protect, authorize } = require('../middleware/authMiddleware'); // <-- NEW: Import protect and authorize
-
+const { protect, authorize } = require('../middleware/authMiddleware'); // Import protect and authorize middleware
 
 // @route   GET /api/properties
 // @desc    Get all properties with optional filters and keyword search
-// @access  Public (authentication can be added later if needed for all GETs)
+// @access  Public (except for agent-specific filtering)
 router.get('/', async (req, res) => {
   try {
     const query = {};
 
-    // 1. Keyword Search (e.g., ?keyword=conakry)
+    // 1. Keyword Search
     if (req.query.keyword) {
       const keyword = req.query.keyword;
       query.$or = [
@@ -22,12 +21,12 @@ router.get('/', async (req, res) => {
       ];
     }
 
-    // 2. Filtering by listingType (e.g., ?listingType=For%20Sale)
+    // 2. Filtering by listingType
     if (req.query.listingType) {
       query.listingType = req.query.listingType;
     }
 
-    // 3. Filtering by propertyType (e.g., ?propertyType=House,Apartment)
+    // 3. Filtering by propertyType
     if (req.query.propertyType) {
       query.propertyType = { $in: req.query.propertyType.split(',') };
     }
@@ -56,10 +55,16 @@ router.get('/', async (req, res) => {
         }
     }
 
-    // Filter by Agent ID (if an agent is logged in and filter requested)
-    if (req.query.agent) {
+    // --- NEW: Filter by Agent ID for specific agent's properties ---
+    if (req.query.agent) { // If an 'agent' query parameter is provided
       query.agent = req.query.agent;
+    } else { // If no specific agent is requested, only show available properties to general public
+        query.isAvailable = true; // Only show available properties to general public (non-agent filtered views)
     }
+    // --- END NEW ---
+
+
+    console.log('DEBUG (Backend Properties GET): Final Query:', query); // Log the final query
 
     const properties = await Property.find(query);
     res.status(200).json({ success: true, count: properties.length, data: properties });
@@ -95,7 +100,7 @@ router.get('/:id', async (req, res) => {
 // @route   POST /api/properties
 // @desc    Add a new property
 // @access  Private (Agent only) - protected route
-router.post('/', protect, async (req, res) => { // <-- protect middleware applied here
+router.post('/', protect, authorize('agent'), async (req, res) => { // Added authorize('agent')
   try {
     // Assuming req.user is populated by authentication middleware
     req.body.agent = req.user.id; // Assign logged-in user as agent
@@ -112,12 +117,11 @@ router.post('/', protect, async (req, res) => { // <-- protect middleware applie
             };
             console.log(`DEBUG (Geocoding): Found coordinates for ${req.body.location} - Lat: ${latitude}, Lon: ${longitude}`);
         } else {
-            console.log(`DEBUG (Geocoding): No coordinates found for ${req.body.location}, proceeding without coordinates.`);
+            console.log("DEBUG (Geocoding): No coordinates found, proceeding without coordinates.");
         }
     } else {
         console.log("DEBUG (Geocoding): No location provided, skipping geocoding.");
     }
-
 
     const property = await Property.create({
       title: req.body.title,
@@ -134,7 +138,7 @@ router.post('/', protect, async (req, res) => { // <-- protect middleware applie
       photos: req.body.photos, // Array of photo URLs
       agent: req.body.agent,
       coordinates: propertyCoordinates,
-      isAvailable: req.body.isAvailable, // Added isAvailable
+      isAvailable: req.body.isAvailable !== undefined ? req.body.isAvailable : true, // Set initial availability
     });
     console.log('DEBUG (Property Creation): Property saved to DB with ID:', property._id);
     console.log('DEBUG (Property Creation): Saved coordinates:', property.coordinates);
@@ -159,8 +163,8 @@ router.post('/', protect, async (req, res) => { // <-- protect middleware applie
 
 // @route   PUT /api/properties/:id
 // @desc    Update property by ID
-// @access  Private (Owner or Admin only)
-router.put('/:id', protect, async (req, res) => { // <-- protect middleware applied here
+// @access  Private (Owner or Admin only) - protected route
+router.put('/:id', protect, async (req, res) => { // Added protect middleware
   try {
     let property = await Property.findById(req.params.id);
 
@@ -174,7 +178,7 @@ router.put('/:id', protect, async (req, res) => { // <-- protect middleware appl
     }
 
     // Geocode location if provided in update
-    if (req.body.location && req.body.location !== property.location) { // Only geocode if location changed
+    if (req.body.location && req.body.location !== property.location) {
         const geoResult = await geocoder.geocode(req.body.location);
         if (geoResult && geoResult.length > 0) {
             const { latitude, longitude } = geoResult[0];
@@ -189,10 +193,15 @@ router.put('/:id', protect, async (req, res) => { // <-- protect middleware appl
         req.body.coordinates = undefined;
     }
 
+    // Allow updating isAvailable status
+    const updateFields = { ...req.body };
+    if (updateFields.isAvailable !== undefined) { // Ensure boolean is correctly handled
+        updateFields.isAvailable = updateFields.isAvailable;
+    }
 
-    property = await Property.findByIdAndUpdate(req.params.id, req.body, {
-      new: true, // Return the updated document
-      runValidators: true // Run Mongoose validators on update
+    property = await Property.findByIdAndUpdate(req.params.id, updateFields, { // Use updateFields
+      new: true,
+      runValidators: true
     });
 
     res.status(200).json({ success: true, data: property });
@@ -213,8 +222,8 @@ router.put('/:id', protect, async (req, res) => { // <-- protect middleware appl
 
 // @route   DELETE /api/properties/:id
 // @desc    Delete property by ID
-// @access  Private (Owner or Admin only)
-router.delete('/:id', protect, async (req, res) => { // <-- protect middleware applied here
+// @access  Private (Owner or Admin only) - protected route
+router.delete('/:id', protect, async (req, res) => { // Added protect middleware
   try {
     const property = await Property.findById(req.params.id);
 
@@ -227,7 +236,7 @@ router.delete('/:id', protect, async (req, res) => { // <-- protect middleware a
       return res.status(401).json({ success: false, error: `User ${req.user.id} is not authorized to delete this property` });
     }
 
-    await property.deleteOne(); // Use deleteOne() to trigger pre/post hooks if any
+    await property.deleteOne();
 
     res.status(200).json({ success: true, message: 'Property deleted successfully' });
 

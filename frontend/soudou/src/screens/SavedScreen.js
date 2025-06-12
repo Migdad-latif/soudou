@@ -4,6 +4,7 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import i18n from '../localization/i18n'; // <-- ADD THIS LINE
 
 const API_BASE_URL = 'http://192.168.1.214:3000/api';
 const screenWidth = Dimensions.get('window').width;
@@ -100,23 +101,20 @@ export default function SavedScreen() {
       setError(null);
       try {
         if (user.role === 'agent') {
-          // Fetch properties added by this agent
           const headers = { 'Authorization': `Bearer ${token}` };
           const response = await axios.get(`${API_BASE_URL}/properties?agent=${user._id || user.id}`);
-          // Make sure each property has a stats object, even if zeros
           const enriched = response.data.data.map(prop => ({
             ...prop,
             stats: prop.stats || { views: 0, clicks: 0, enquiries: 0 }
           }));
           setSavedProperties(enriched);
         } else {
-          // Fetch saved properties for normal users
           const headers = { 'Authorization': `Bearer ${token}` };
           const response = await axios.get(`${API_BASE_URL}/auth/saved-properties`, { headers });
           setSavedProperties(response.data.data);
         }
       } catch (err) {
-        setError('Failed to load properties.');
+        setError(i18n.t('failedToLoadProperties') || 'Failed to load properties.');
       } finally {
         setLoading(false);
       }
@@ -130,7 +128,7 @@ export default function SavedScreen() {
   // Toggle Save Property Function (only for normal users)
   const handleToggleSave = async (propertyId) => {
     if (!user || !token) {
-      alert('Please log in to save properties.');
+      alert(i18n.t('pleaseLoginToSave') || 'Please log in to save properties.');
       navigation.navigate('AccountTab', { screen: 'Login' });
       return;
     }
@@ -141,32 +139,32 @@ export default function SavedScreen() {
 
       if (response.data.action === 'unsaved') {
         setSavedProperties(prev => prev.filter(prop => prop._id !== propertyId));
-        alert('Property unsaved!');
+        alert(i18n.t('propertyUnsaved') || 'Property unsaved!');
       } else {
-        alert('Property saved!');
+        alert(i18n.t('propertySaved') || 'Property saved!');
       }
     } catch (err) {
-      alert('Failed to save/unsave property. Please try again.');
+      alert(i18n.t('failedToSaveUnsaveProperty') || 'Failed to save/unsave property. Please try again.');
     }
   };
 
   // Delete property (for agents)
   const handleDeleteProperty = async (propertyId) => {
     Alert.alert(
-      'Delete Property',
-      'Are you sure you want to delete this property? This action cannot be undone.',
+      i18n.t('deleteProperty') || 'Delete Property',
+      i18n.t('deletePropertyConfirmation') || 'Are you sure you want to delete this property? This action cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: i18n.t('cancel') || 'Cancel', style: 'cancel' },
         {
-          text: 'Delete', style: 'destructive', onPress: async () => {
+          text: i18n.t('delete') || 'Delete', style: 'destructive', onPress: async () => {
             try {
               setLoading(true);
               const headers = { 'Authorization': `Bearer ${token}` };
               await axios.delete(`${API_BASE_URL}/properties/${propertyId}`, { headers });
               setSavedProperties(prev => prev.filter(prop => prop._id !== propertyId));
-              alert('Property deleted!');
+              alert(i18n.t('propertyDeleted') || 'Property deleted!');
             } catch (err) {
-              alert('Failed to delete property.');
+              alert(i18n.t('failedToDeleteProperty') || 'Failed to delete property.');
             } finally {
               setLoading(false);
             }
@@ -185,7 +183,7 @@ export default function SavedScreen() {
   // Submit edit property (for agents)
   const handleSubmitEdit = async () => {
     if (!editForm.title || !editForm.price || !editForm.location) {
-      Alert.alert('Missing Fields', 'Title, Price, and Location are required.');
+      Alert.alert(i18n.t('missingFields') || 'Missing Fields', i18n.t('titlePriceLocationRequired') || 'Title, Price, and Location are required.');
       return;
     }
     setEditLoading(true);
@@ -201,9 +199,9 @@ export default function SavedScreen() {
         prev.map(prop => prop._id === editForm._id ? { ...prop, ...payload } : prop)
       );
       setEditModalVisible(false);
-      alert('Property updated!');
+      alert(i18n.t('propertyUpdated') || 'Property updated!');
     } catch (err) {
-      alert('Failed to update property.');
+      alert(i18n.t('failedToUpdateProperty') || 'Failed to update property.');
     } finally {
       setEditLoading(false);
     }
@@ -213,7 +211,7 @@ export default function SavedScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading properties...</Text>
+        <Text>{i18n.t('loadingProperties') || 'Loading properties...'}</Text>
       </View>
     );
   }
@@ -221,8 +219,8 @@ export default function SavedScreen() {
   if (!user) {
     return (
       <View style={styles.center}>
-        <Text style={styles.noUserText}>Please log in to view your properties.</Text>
-        <Button title="Sign In" onPress={() => navigation.navigate('AccountTab', { screen: 'Login' })} color="#007bff" />
+        <Text style={styles.noUserText}>{i18n.t('pleaseLoginToViewProperties') || 'Please log in to view your properties.'}</Text>
+        <Button title={i18n.t('signIn') || 'Sign In'} onPress={() => navigation.navigate('AccountTab', { screen: 'Login' })} color="#007bff" />
       </View>
     );
   }
@@ -230,23 +228,21 @@ export default function SavedScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Error: {error}</Text>
+        <Text style={styles.errorText}>{i18n.t('error')}: {error}</Text>
       </View>
     );
   }
 
-  // Agent: add property button
   const renderAddPropertyButton = () => (
     <TouchableOpacity style={styles.addPropertyButton} onPress={() => navigation.navigate('HomeTab', { screen: 'AddProperty' })}>
       <Ionicons name="add-circle" size={28} color="#fff" style={{ marginRight: 6 }} />
-      <Text style={styles.addPropertyButtonText}>Add Property</Text>
+      <Text style={styles.addPropertyButtonText}>{i18n.t('addProperty') || 'Add Property'}</Text>
     </TouchableOpacity>
   );
 
-  // Label per role
-  let mainLabel = "Saved Properties";
+  let mainLabel = i18n.t('savedProperties') || "Saved Properties";
   if (user.role === "agent") {
-    mainLabel = "Dashboard";
+    mainLabel = i18n.t('dashboard') || "Dashboard";
   }
 
   return (
@@ -261,11 +257,13 @@ export default function SavedScreen() {
         <View style={styles.center}>
           <Text style={styles.noPropertiesText}>
             {user.role === 'agent'
-              ? "You haven't added any properties yet."
-              : "You haven't saved any properties yet."}
+              ? i18n.t('noAgentProperties') || "You haven't added any properties yet."
+              : i18n.t('noSavedProperties') || "You haven't saved any properties yet."}
           </Text>
           <Button
-            title={user.role === 'agent' ? "Add Property" : "Browse Properties"}
+            title={user.role === 'agent'
+              ? i18n.t('addProperty') || "Add Property"
+              : i18n.t('browseProperties') || "Browse Properties"}
             onPress={() =>
               user.role === 'agent'
                 ? navigation.navigate('HomeTab', { screen: 'AddProperty' })
@@ -292,15 +290,15 @@ export default function SavedScreen() {
               ) : (
                 <View style={styles.noCardImageIcon}>
                   <Ionicons name="image-outline" size={50} color="#ccc" />
-                  <Text style={styles.noCardImageText}>No Image</Text>
+                  <Text style={styles.noCardImageText}>{i18n.t('noImage') || 'No Image'}</Text>
                 </View>
               )}
 
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>{item.title}</Text>
                 <Text style={styles.cardLocation}>
-                  {item.location?.city || 'Unknown Location'},{' '}
-                  {item.location?.country || 'Unknown Country'}
+                  {item.location?.city || i18n.t('unknownLocation') || 'Unknown Location'},{' '}
+                  {item.location?.country || i18n.t('unknownCountry') || 'Unknown Country'}
                 </Text>
                 <Text style={styles.cardPrice}>
                   {item.price?.toLocaleString('en-US') || 'N/A'} GNF
@@ -308,11 +306,11 @@ export default function SavedScreen() {
                 <Text style={styles.cardPropertyType}>
                   {Array.isArray(item.propertyType) && item.propertyType.length > 0
                     ? item.propertyType.join(', ')
-                    : item.propertyType || 'Property Type N/A'}
+                    : item.propertyType || (i18n.t('propertyTypeNA') || 'Property Type N/A')}
                 </Text>
                 <View style={styles.cardInfoRow}>
                   <Text style={styles.cardInfoText}>
-                    Bedrooms: {item.bedrooms || 0} | Bathrooms: {item.bathrooms || 0}
+                    {i18n.t('bedrooms') || 'Bedrooms'}: {item.bedrooms || 0} | {i18n.t('bathrooms') || 'Bathrooms'}: {item.bathrooms || 0}
                   </Text>
                 </View>
 
@@ -322,17 +320,17 @@ export default function SavedScreen() {
                     <View style={styles.statsItem}>
                       <Ionicons name="eye" size={18} color="#888" style={{ marginRight: 2 }} />
                       <Text style={styles.statsValue}>{item.stats.views ?? 0}</Text>
-                      <Text style={styles.statsLabel}>Views</Text>
+                      <Text style={styles.statsLabel}>{i18n.t('views') || 'Views'}</Text>
                     </View>
                     <View style={styles.statsItem}>
                       <Ionicons name="hand-right-outline" size={18} color="#888" style={{ marginRight: 2 }} />
                       <Text style={styles.statsValue}>{item.stats.clicks ?? 0}</Text>
-                      <Text style={styles.statsLabel}>Clicks</Text>
+                      <Text style={styles.statsLabel}>{i18n.t('clicks') || 'Clicks'}</Text>
                     </View>
                     <View style={styles.statsItem}>
                       <Ionicons name="mail-outline" size={18} color="#888" style={{ marginRight: 2 }} />
                       <Text style={styles.statsValue}>{item.stats.enquiries ?? 0}</Text>
-                      <Text style={styles.statsLabel}>Enquiries</Text>
+                      <Text style={styles.statsLabel}>{i18n.t('enquiries') || 'Enquiries'}</Text>
                     </View>
                   </View>
                 )}
@@ -344,14 +342,14 @@ export default function SavedScreen() {
                       onPress={() => handleEditProperty(item)}
                     >
                       <Ionicons name="create-outline" size={20} color="#fff" />
-                      <Text style={styles.actionButtonText}>Edit</Text>
+                      <Text style={styles.actionButtonText}>{i18n.t('edit') || 'Edit'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.deleteButton}
                       onPress={() => handleDeleteProperty(item._id)}
                     >
                       <Ionicons name="trash-outline" size={20} color="#fff" />
-                      <Text style={styles.actionButtonText}>Delete</Text>
+                      <Text style={styles.actionButtonText}>{i18n.t('delete') || 'Delete'}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -370,7 +368,7 @@ export default function SavedScreen() {
                       color={'#dc3545'}
                     />
                   </TouchableOpacity>
-                  <Text style={styles.savedLabelText}>Saved</Text>
+                  <Text style={styles.savedLabelText}>{i18n.t('saved') || 'Saved'}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -387,29 +385,29 @@ export default function SavedScreen() {
       >
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Property</Text>
+            <Text style={styles.modalTitle}>{i18n.t('editProperty') || 'Edit Property'}</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Title"
+              placeholder={i18n.t('title') || "Title"}
               value={editForm.title || ''}
               onChangeText={text => setEditForm({ ...editForm, title: text })}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Price"
+              placeholder={i18n.t('price') || "Price"}
               value={String(editForm.price || '')}
               onChangeText={text => setEditForm({ ...editForm, price: text })}
               keyboardType="numeric"
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Location"
+              placeholder={i18n.t('location') || "Location"}
               value={editForm.location || ''}
               onChangeText={text => setEditForm({ ...editForm, location: text })}
             />
             <TextInput
               style={styles.modalInput}
-              placeholder="Description"
+              placeholder={i18n.t('description') || "Description"}
               value={editForm.description || ''}
               onChangeText={text => setEditForm({ ...editForm, description: text })}
               multiline
@@ -428,16 +426,16 @@ export default function SavedScreen() {
                   <Ionicons name="checkmark" size={16} color="#fff" />
                 )}
               </TouchableOpacity>
-              <Text style={styles.checkboxLabel}>Available</Text>
+              <Text style={styles.checkboxLabel}>{i18n.t('available') || 'Available'}</Text>
             </View>
             <View style={styles.modalActionRow}>
               <Button
-                title="Cancel"
+                title={i18n.t('cancel') || "Cancel"}
                 color="#888"
                 onPress={() => setEditModalVisible(false)}
               />
               <Button
-                title={editLoading ? "Saving..." : "Save"}
+                title={editLoading ? (i18n.t('saving') || "Saving...") : (i18n.t('save') || "Save")}
                 color="#007bff"
                 onPress={handleSubmitEdit}
                 disabled={editLoading}
@@ -449,6 +447,8 @@ export default function SavedScreen() {
     </View>
   );
 }
+
+// ...styles remain the same as you provided above
 
 const styles = StyleSheet.create({
   container: {
