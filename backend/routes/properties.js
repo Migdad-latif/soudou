@@ -9,18 +9,23 @@ router.get('/', async (req, res) => {
   try {
     const query = {};
 
+    // Keyword search (title, description, city)
     if (req.query.keyword) {
       const keyword = req.query.keyword;
       query.$or = [
         { title: { $regex: keyword, $options: 'i' } },
         { description: { $regex: keyword, $options: 'i' } },
-        { location: { $regex: keyword, $options: 'i' } }
+        { "location.city": { $regex: keyword, $options: 'i' } }
       ];
     }
 
+    // Listing type filter
     if (req.query.listingType) query.listingType = req.query.listingType;
+
+    // Property type filter (array support)
     if (req.query.propertyType) query.propertyType = { $in: req.query.propertyType.split(',') };
 
+    // Bedrooms filter
     if (req.query.bedrooms || req.query.bedroomsMin || req.query.maxBedrooms) {
       if (req.query.bedrooms) {
         query.bedrooms = Number(req.query.bedrooms);
@@ -32,6 +37,7 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Bathrooms filter
     if (req.query.bathrooms || req.query.bathroomsMin || req.query.maxBathrooms) {
       if (req.query.bathrooms) {
         query.bathrooms = Number(req.query.bathrooms);
@@ -43,15 +49,61 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Price range filter
+    if (req.query.priceMin || req.query.priceMax) {
+      query.price = {};
+      if (req.query.priceMin) query.price.$gte = Number(req.query.priceMin);
+      if (req.query.priceMax) query.price.$lte = Number(req.query.priceMax);
+      if (Object.keys(query.price).length === 0) delete query.price;
+    }
+
+    // Region filter (location.region)
+    if (req.query.region) {
+      query['location.region'] = req.query.region;
+    }
+    // City filter (location.city)
+    if (req.query.city) {
+      query['location.city'] = { $regex: req.query.city, $options: 'i' };
+    }
+
+    // Amenities filter (must include all specified amenities)
+    if (req.query.amenities) {
+      // Example: amenities=Parking,Swimming Pool
+      const amenitiesArr = req.query.amenities.split(',').map(a => a.trim());
+      query.amenities = { $all: amenitiesArr };
+    }
+
+    // Agent filter
     if (req.query.agent) {
       query.agent = req.query.agent;
     } else {
       query.isAvailable = true;
     }
 
-    console.log('DEBUG (Backend Properties GET): Final Query:', query);
+    // Sorting
+    // sort options: newest, price_asc, price_desc
+    let sort = {};
+    if (req.query.sort) {
+      if (req.query.sort === 'newest') sort = { createdAt: -1 };
+      else if (req.query.sort === 'price_asc') sort = { price: 1 };
+      else if (req.query.sort === 'price_desc') sort = { price: -1 };
+    } else {
+      sort = { createdAt: -1 }; // default: newest first
+    }
 
-    const properties = await Property.find(query);
+    // Pagination (optional, add if desired)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // DEBUG
+    console.log('DEBUG (Backend Properties GET): Final Query:', query, 'Sort:', sort);
+
+    const properties = await Property.find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit);
+
     res.status(200).json({ success: true, count: properties.length, data: properties });
 
   } catch (err) {
@@ -83,8 +135,15 @@ router.post('/', protect, authorize('agent'), async (req, res) => {
     req.body.agent = req.user.id;
 
     let propertyCoordinates;
+    // Use city or region name for geocoding if location is structured
+    let locationString = '';
     if (req.body.location) {
-      const geoResult = await geocoder.geocode(req.body.location);
+      if (typeof req.body.location === 'object') {
+        locationString = `${req.body.location.city || ''}, ${req.body.location.region || ''}`;
+      } else {
+        locationString = req.body.location;
+      }
+      const geoResult = await geocoder.geocode(locationString);
       if (geoResult && geoResult.length > 0) {
         const { latitude, longitude } = geoResult[0];
         propertyCoordinates = {
@@ -130,8 +189,15 @@ router.put('/:id', protect, async (req, res) => {
       return res.status(401).json({ success: false, error: `User ${req.user.id} is not authorized to update this property` });
     }
 
-    if (req.body.location && req.body.location !== property.location) {
-      const geoResult = await geocoder.geocode(req.body.location);
+    // Geocode if location updated
+    let locationString = '';
+    if (req.body.location && JSON.stringify(req.body.location) !== JSON.stringify(property.location)) {
+      if (typeof req.body.location === 'object') {
+        locationString = `${req.body.location.city || ''}, ${req.body.location.region || ''}`;
+      } else {
+        locationString = req.body.location;
+      }
+      const geoResult = await geocoder.geocode(locationString);
       if (geoResult && geoResult.length > 0) {
         const { latitude, longitude } = geoResult[0];
         req.body.coordinates = {

@@ -43,9 +43,30 @@ const PropertySchema = new mongoose.Schema({
     type: String,
     required: false
   },
+  // Updated location field for region & city support
   location: {
-    type: String,
-    required: [true, 'Please add a location']
+    region: {
+      type: String,
+      required: true,
+      enum: [
+        'Basse-Guinee',      // Lower Guinea
+        'Moyenne-Guinee',    // Middle Guinea
+        'Haute-Guinee',      // Upper Guinea
+        'Guinee-Forestiere'  // Forested Guinea
+      ]
+    },
+    city: {
+      type: String,
+      required: false
+    }
+  },
+  amenities: {
+    type: [String],
+    enum: [
+      'Parking', 'Balcony', 'Furnished', 'Swimming Pool', 'Garden',
+      'Gym', 'Security', 'Elevator', 'Air Conditioning', 'Internet'
+    ],
+    default: []
   },
   photos: {
     type: [String],

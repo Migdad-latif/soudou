@@ -91,11 +91,6 @@ export default function HomeScreen() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [savedPropertyIds, setSavedPropertyIds] = useState(new Set());
 
-  // Debug logs for guards and user info
-  useEffect(() => {
-    console.log('FETCH GUARD:', { isFocused, authLoading, user });
-  }, [isFocused, authLoading, user]);
-
   useEffect(() => {
     const fetchSavedProperties = async () => {
       if (!user || !token) {
@@ -117,26 +112,27 @@ export default function HomeScreen() {
     }
   }, [isFocused, user, token]);
 
-  // Apply filters from navigation
+  // Accept and use filters from FiltersScreen
   useEffect(() => {
     if (!isFocused || authLoading) return;
 
-    if (route.params?.appliedFilters) {
-      const { appliedFilters } = route.params;
-      setFilters({
-        ...appliedFilters,
-        keyword: appliedFilters.keyword || '',
-      });
-      setSearchKeyword(appliedFilters.keyword || '');
-      navigation.setParams({ appliedFilters: undefined });
+    if (route.params?.filters) {
+      const newFilters = route.params.filters;
+      setFilters((prev) => ({
+        ...prev,
+        ...newFilters,
+        keyword: newFilters.keyword !== undefined ? newFilters.keyword : prev.keyword,
+      }));
+      if (newFilters.keyword !== undefined) setSearchKeyword(newFilters.keyword);
+      navigation.setParams({ filters: undefined });
     } else if (!filters.listingType) {
       setFilters({ listingType: 'For Sale' });
     }
   }, [isFocused, route.params, navigation, filters.listingType, user, authLoading]);
 
+  // Fetch properties with expanded filters
   useEffect(() => {
     if (!isFocused || authLoading) return;
-    // Robust agent id check
     const agentId = user && user.role === 'agent' ? (user._id || user.id) : null;
     if (user && user.role === 'agent' && !agentId) return;
 
@@ -155,8 +151,15 @@ export default function HomeScreen() {
           params.propertyType = filters.propertyType.join(',');
         }
         if (filters.keyword) params.keyword = filters.keyword;
+        if (filters.priceMin !== undefined) params.priceMin = filters.priceMin;
+        if (filters.priceMax !== undefined) params.priceMax = filters.priceMax;
+        if (filters.region) params.region = filters.region;
+        if (filters.city) params.city = filters.city;
+        if (filters.amenities && Array.isArray(filters.amenities) && filters.amenities.length > 0) {
+          params.amenities = filters.amenities.join(',');
+        }
+        if (filters.sort) params.sort = filters.sort;
 
-        // Only add agent if user._id (or user.id) exists
         if (user && user.role === 'agent' && agentId) {
           params.agent = agentId;
         } else {
@@ -226,6 +229,23 @@ export default function HomeScreen() {
     }
   };
 
+  // Helper to check if filters are applied (other than default listingType)
+  const isFilterActive = () => {
+    const keys = Object.keys(filters).filter(key => key !== 'listingType');
+    return keys.some(key => {
+      const val = filters[key];
+      if (Array.isArray(val)) return val.length > 0;
+      return val !== undefined && val !== null && val !== '';
+    });
+  };
+
+  // Handler to clear filters and reload default list
+  const handleClearFiltersAndGoHome = () => {
+    setFilters({ listingType: 'For Sale' });
+    setSearchKeyword('');
+    navigation.setParams({ filters: undefined });
+  };
+
   if (authLoading || loading) {
     return (
       <View style={styles.center}>
@@ -287,6 +307,18 @@ export default function HomeScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Back to Home Button - Improved Placement and Style */}
+      {isFilterActive() && (
+        <TouchableOpacity
+          style={styles.clearFiltersButton}
+          onPress={handleClearFiltersAndGoHome}
+          accessibilityLabel="Back to home"
+        >
+          <Ionicons name="arrow-back-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.clearFiltersText}>Back to Home </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Property List */}
       {properties.length === 0 ? (
@@ -414,6 +446,29 @@ const styles = StyleSheet.create({
   },
   activeToggleButtonText: {
     color: '#fff',
+  },
+
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginVertical: 10,
+    backgroundColor: '#00c3a5',
+    borderRadius: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 26,
+    elevation: 3,
+    shadowColor: '#007A66',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 4,
+  },
+  clearFiltersText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 17,
+    textAlign: 'center',
   },
 
   listContent: {
